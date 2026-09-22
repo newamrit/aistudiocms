@@ -1,0 +1,6 @@
+{
+  "name": "Paila Nepal Travel CMS",
+  "description": "Comprehensive operations and travel management CMS for Paila Nepal, featuring tour leader portal, bookings, accounting, field activities, operations, and offline support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
