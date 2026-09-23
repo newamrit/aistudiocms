@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { packages as initialPackages } from '../data/mockData';
+import { usePackages } from '../contexts/PackageContext';
+import { SkeletonLoader } from '../components/common/SkeletonLoader';
+import { EmptyState } from '../components/common/EmptyState';
 import { Clock, DollarSign, X, Eye, Edit, Trash2, Plus, GripVertical, MapPin, ChevronRight, ChevronLeft } from 'lucide-react';
 import { Package, ItineraryDay } from '../types';
 import { sounds } from '../utils/sounds';
@@ -7,7 +9,7 @@ import { sounds } from '../utils/sounds';
 type ModalMode = 'create' | 'edit' | 'view' | null;
 
 export default function Packages() {
-  const [packages, setPackages] = useState<Package[]>(initialPackages);
+  const { packages, isLoading, error, addPackage, updatePackage, deletePackage } = usePackages();
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [activePackage, setActivePackage] = useState<Package | null>(null);
   const [formData, setFormData] = useState<Partial<Package>>({
@@ -59,44 +61,47 @@ export default function Packages() {
     setModalMode('view');
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.title || !formData.slug) {
-      alert('Please fill in required fields (Title and Slug)');
       return;
     }
 
-    if (modalMode === 'create') {
-      const newPkg: Package = {
-        id: Math.max(...packages.map(p => p.id), 0) + 1,
-        title: formData.title || '',
-        slug: formData.slug || '',
-        durationDays: formData.durationDays || 1,
-        durationNights: formData.durationNights || 0,
-        standardPrice: formData.standardPrice || 0,
-        overview: formData.overview || '',
-        inclusions: formData.inclusions || '',
-        exclusions: formData.exclusions || '',
-        category: formData.category || 'Trekking',
-        itineraryDays: formData.itineraryDays || []
-      };
-      setPackages([...packages, newPkg]);
-      sounds.success();
-      alert('Package created successfully!');
-    } else if (modalMode === 'edit' && activePackage) {
-      setPackages(packages.map(p => p.id === activePackage.id ? { ...p, ...formData } as Package : p));
-      sounds.success();
-      alert('Package updated successfully!');
-    }
+    try {
+      if (modalMode === 'create') {
+        await addPackage({
+          title: formData.title || '',
+          slug: formData.slug || '',
+          durationDays: formData.durationDays || 1,
+          durationNights: formData.durationNights || 0,
+          standardPrice: formData.standardPrice || 0,
+          overview: formData.overview || '',
+          inclusions: formData.inclusions || '',
+          exclusions: formData.exclusions || '',
+          category: formData.category || 'Trekking',
+          itineraryDays: formData.itineraryDays || []
+        });
+        sounds.success();
+      } else if (modalMode === 'edit' && activePackage) {
+        await updatePackage(activePackage.id, formData);
+        sounds.success();
+      }
 
-    setModalMode(null);
-    setActivePackage(null);
-    resetForm();
+      setModalMode(null);
+      setActivePackage(null);
+      resetForm();
+    } catch (err) {
+      console.error('Failed to save package:', err);
+    }
   };
 
-  const handleDelete = (id: number) => {
-    setPackages(packages.filter(p => p.id !== id));
-    sounds.delete();
-    setShowDeleteConfirm(null);
+  const handleDelete = async (id: number) => {
+    try {
+      await deletePackage(id);
+      sounds.delete();
+      setShowDeleteConfirm(null);
+    } catch (err) {
+      console.error('Failed to delete package:', err);
+    }
   };
 
   // Itinerary management
@@ -152,73 +157,79 @@ export default function Packages() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {packages.map(pkg => (
-          <div key={pkg.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-lg transition-all group">
-            <div className="h-2 bg-gradient-to-r from-paila-blue to-paila-orange" />
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <SkeletonLoader type="card" />
+          <SkeletonLoader type="card" />
+          <SkeletonLoader type="card" />
+        </div>
+      ) : packages.length === 0 ? (
+        <EmptyState
+          title="No Travel Packages in Database"
+          description="Your package catalog is empty. Click below to create your first customizable itinerary template."
+          actionText="Create New Package"
+          onAction={openCreateModal}
+        />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {packages.map(pkg => (
+            <div key={pkg.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-lg transition-all group">
+              <div className="h-2 bg-gradient-to-r from-paila-blue to-paila-orange" />
 
-            <div className="p-5">
-              <div className="flex items-center justify-between mb-3">
-                <span className={`px-2 py-0.5 text-[10px] font-semibold rounded-full ${getCategoryColor(pkg.category)}`}>
-                  {pkg.category}
-                </span>
-                <span className="text-xs text-slate-400">#{pkg.id}</span>
-              </div>
-
-              <h3 className="text-base font-bold text-slate-900 group-hover:text-paila-blue transition-colors">{pkg.title}</h3>
-
-              <div className="flex items-center gap-4 mt-3 text-xs text-slate-500">
-                <span className="flex items-center gap-1"><Clock size={12} /> {pkg.durationDays}D/{pkg.durationNights}N</span>
-                <span className="flex items-center gap-1"><DollarSign size={12} /> NPR {pkg.standardPrice.toLocaleString()}/pax</span>
-                {pkg.itineraryDays && pkg.itineraryDays.length > 0 && (
-                  <span className="flex items-center gap-1 text-paila-blue">
-                    <MapPin size={12} /> {pkg.itineraryDays.length} days
+              <div className="p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <span className={`px-2 py-0.5 text-[10px] font-semibold rounded-full ${getCategoryColor(pkg.category)}`}>
+                    {pkg.category}
                   </span>
-                )}
-              </div>
+                  <span className="text-xs text-slate-400">#{pkg.id}</span>
+                </div>
 
-              <p className="text-xs text-slate-600 mt-3 line-clamp-3">{pkg.overview}</p>
+                <h3 className="text-base font-bold text-slate-900 group-hover:text-paila-blue transition-colors">{pkg.title}</h3>
 
-              <div className="mt-4 pt-4 border-t border-slate-100">
-                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Inclusions</p>
-                <p className="text-xs text-slate-600 line-clamp-2">{pkg.inclusions}</p>
-              </div>
+                <div className="flex items-center gap-4 mt-3 text-xs text-slate-500">
+                  <span className="flex items-center gap-1"><Clock size={12} /> {pkg.durationDays}D/{pkg.durationNights}N</span>
+                  <span className="flex items-center gap-1"><DollarSign size={12} /> NPR {pkg.standardPrice.toLocaleString()}/pax</span>
+                  {pkg.itineraryDays && pkg.itineraryDays.length > 0 && (
+                    <span className="flex items-center gap-1 text-paila-blue">
+                      <MapPin size={12} /> {pkg.itineraryDays.length} days
+                    </span>
+                  )}
+                </div>
 
-              <div className="mt-3 flex gap-2">
-                <button
-                  onClick={() => openViewModal(pkg)}
-                  className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-medium hover:bg-slate-200 transition-colors"
-                >
-                  <Eye size={12} />
-                  View
-                </button>
-                <button
-                  onClick={() => openEditModal(pkg)}
-                  className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-paila-blue/10 text-paila-blue rounded-lg text-xs font-medium hover:bg-paila-blue/20 transition-colors"
-                >
-                  <Edit size={12} />
-                  Edit
-                </button>
-                <button
-                  onClick={() => setShowDeleteConfirm(pkg.id)}
-                  className="flex items-center justify-center px-3 py-2 bg-red-50 text-red-600 rounded-lg text-xs font-medium hover:bg-red-100 transition-colors"
-                >
-                  <Trash2 size={12} />
-                </button>
+                <p className="text-xs text-slate-600 mt-3 line-clamp-3">{pkg.overview}</p>
+
+                <div className="mt-4 pt-4 border-t border-slate-100">
+                  <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Inclusions</p>
+                  <p className="text-xs text-slate-600 line-clamp-2">{pkg.inclusions}</p>
+                </div>
+
+                <div className="mt-3 flex gap-2">
+                  <button
+                    onClick={() => openViewModal(pkg)}
+                    className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-medium hover:bg-slate-200 transition-colors"
+                  >
+                    <Eye size={12} />
+                    View
+                  </button>
+                  <button
+                    onClick={() => openEditModal(pkg)}
+                    className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-paila-blue/10 text-paila-blue rounded-lg text-xs font-medium hover:bg-paila-blue/20 transition-colors"
+                  >
+                    <Edit size={12} />
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => setShowDeleteConfirm(pkg.id)}
+                    className="flex items-center justify-center px-3 py-2 bg-red-50 text-red-600 rounded-lg text-xs font-medium hover:bg-red-100 transition-colors"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
-
-        {packages.length === 0 && (
-          <div className="col-span-full text-center py-16">
-            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Clock size={32} className="text-slate-400" />
-            </div>
-            <p className="text-slate-500 text-sm">No packages yet. Create your first package!</p>
-          </div>
-        )}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* Create / Edit Modal */}
       {(modalMode === 'create' || modalMode === 'edit') && (

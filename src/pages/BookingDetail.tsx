@@ -1,13 +1,18 @@
-import { useState } from 'react';
-import { operationAllocations, vendors, packages } from '../data/mockData';
-import { BookingStatus, ClientType, ItineraryDay } from '../types';
+import { useState, useMemo } from 'react';
+import { BookingStatus, ClientType, ItineraryDay, BookingStatusHistoryEntry } from '../types';
 import {
   ArrowLeft, MapPin, Calendar, Users, Phone, Mail,
   Printer, FileText, CheckCircle, Clock, AlertTriangle,
-  ChevronRight, Mountain, Lock, Edit, Trash2, Plus, X
+  ChevronRight, Mountain, Lock, Edit, Trash2, Plus, X,
+  History, Shield, User, ArrowRight, Sparkles, Download,
+  CheckCircle2, AlertCircle, RefreshCw, Check, MessageSquare
 } from 'lucide-react';
 import DocumentViewer from '../components/DocumentViewer';
 import { useBookings } from '../contexts/BookingContext';
+import { useOperations } from '../contexts/OperationsContext';
+import { useVendors } from '../contexts/VendorContext';
+import { usePackages } from '../contexts/PackageContext';
+import { useAuth } from '../contexts/AuthContext';
 import { sounds } from '../utils/sounds';
 
 interface BookingDetailProps {
@@ -16,13 +21,26 @@ interface BookingDetailProps {
 }
 
 export default function BookingDetail({ bookingId, onNavigate }: BookingDetailProps) {
-  const { getBookingById, updateBooking, deleteBooking } = useBookings();
+  const { user } = useAuth();
+  const { getBookingById, updateBooking, changeBookingStatus, deleteBooking } = useBookings();
+  const { allocations: allAllocations } = useOperations();
+  const { vendors } = useVendors();
+  const { packages } = usePackages();
   const booking = getBookingById(bookingId);
-  const allocations = operationAllocations.filter(a => a.bookingId === bookingId);
-  const [activeTab, setActiveTab] = useState<'overview' | 'itinerary' | 'operations' | 'documents'>('overview');
-  const [viewingDocument, setViewingDocument] = useState<'proposal' | 'voucher' | 'invoice' | null>(null);
+  const allocations = allAllocations.filter(a => a.bookingId === bookingId);
+  const [activeTab, setActiveTab] = useState<'overview' | 'itinerary' | 'operations' | 'status-history' | 'documents'>('overview');
+  const [viewingDocument, setViewingDocument] = useState<'proposal' | 'voucher' | 'invoice' | 'itinerary-summary' | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // Status Change Dialog State
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [selectedNewStatus, setSelectedNewStatus] = useState<BookingStatus>('CONFIRMED');
+  const [statusReason, setStatusReason] = useState('');
+  const [statusNotes, setStatusNotes] = useState('');
+  const [statusToast, setStatusToast] = useState<string | null>(null);
+  const [historySortOrder, setHistorySortOrder] = useState<'NEWEST' | 'OLDEST'>('NEWEST');
+
   const [editData, setEditData] = useState({
     clientType: '' as ClientType,
     clientName: '',
@@ -101,11 +119,267 @@ export default function BookingDetail({ bookingId, onNavigate }: BookingDetailPr
     onNavigate('bookings');
   };
 
-  const totalVendorCost = allocations.reduce((s, a) => s + a.agreedCost, 0);
-  const totalVendorPaid = allocations.reduce((s, a) => s + a.amountPaid, 0);
+  const totalVendorCost = allocations.reduce((s, a) => s + (Number(a.agreedCost) || 0), 0);
+  const totalVendorPaid = allocations.reduce((s, a) => s + (Number(a.amountPaid) || 0), 0);
+
+  // Status History formatting helpers
+  const formatTimestamp = (dateStr: string) => {
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      return d.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const getRelativeTime = (dateStr: string) => {
+    try {
+      const d = new Date(dateStr);
+      const now = new Date();
+      const diffMs = now.getTime() - d.getTime();
+      if (diffMs < 0) return 'Just now';
+      const diffSec = Math.floor(diffMs / 1000);
+      const diffMin = Math.floor(diffSec / 60);
+      const diffHours = Math.floor(diffMin / 60);
+      const diffDays = Math.floor(diffHours / 24);
+
+      if (diffSec < 60) return 'Just now';
+      if (diffMin < 60) return `${diffMin}m ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      if (diffDays === 1) return 'Yesterday';
+      if (diffDays < 30) return `${diffDays}d ago`;
+      const diffMonths = Math.floor(diffDays / 30);
+      if (diffMonths < 12) return `${diffMonths}mo ago`;
+      return `${Math.floor(diffDays / 365)}y ago`;
+    } catch {
+      return '';
+    }
+  };
+
+  const getRoleBadge = (role?: string) => {
+    const r = (role || '').toUpperCase();
+    if (r.includes('ADMIN')) {
+      return {
+        label: 'Super Admin',
+        color: 'bg-purple-100 text-purple-800 border-purple-200'
+      };
+    }
+    if (r.includes('OPS') || r.includes('OPERATION')) {
+      return {
+        label: 'Operations',
+        color: 'bg-emerald-100 text-emerald-800 border-emerald-200'
+      };
+    }
+    if (r.includes('SALES')) {
+      return {
+        label: 'Sales',
+        color: 'bg-blue-100 text-blue-800 border-blue-200'
+      };
+    }
+    if (r.includes('TOUR') || r.includes('GUIDE') || r.includes('OPERATOR')) {
+      return {
+        label: 'Tour Leader',
+        color: 'bg-amber-100 text-amber-800 border-amber-200'
+      };
+    }
+    return {
+      label: role || 'Staff',
+      color: 'bg-slate-100 text-slate-700 border-slate-200'
+    };
+  };
+
+  const historyEntries = useMemo(() => {
+    let list: BookingStatusHistoryEntry[] = [];
+    if (booking?.statusHistory && booking.statusHistory.length > 0) {
+      list = [...booking.statusHistory];
+    } else {
+      // Generate sensible baseline entries if booking had no prior history array
+      list = [
+        {
+          id: `created-${booking.id}`,
+          bookingId: booking.id,
+          bookingCode: booking.bookingCode,
+          fromStatus: null,
+          toStatus: 'PROPOSED',
+          changedAt: booking.createdAt ? `${booking.createdAt}T09:00:00.000Z` : new Date().toISOString(),
+          changedBy: {
+            name: booking.createdByName || 'Sales Staff',
+            role: 'SALES',
+          },
+          reason: `Initial booking inquiry created for ${booking.clientName}.`,
+          source: 'ADMIN_PORTAL'
+        }
+      ];
+
+      if (booking.status !== 'PROPOSED') {
+        list.push({
+          id: `current-${booking.id}`,
+          bookingId: booking.id,
+          bookingCode: booking.bookingCode,
+          fromStatus: 'PROPOSED',
+          toStatus: booking.status,
+          changedAt: new Date().toISOString(),
+          changedBy: {
+            name: 'Operations Team',
+            role: 'OPERATIONS',
+          },
+          reason: `Status set to ${booking.status.replace('_', ' ')}.`,
+          source: 'ADMIN_PORTAL'
+        });
+      }
+    }
+
+    if (historySortOrder === 'NEWEST') {
+      return list.sort((a, b) => new Date(b.changedAt).getTime() - new Date(a.changedAt).getTime());
+    } else {
+      return list.sort((a, b) => new Date(a.changedAt).getTime() - new Date(b.changedAt).getTime());
+    }
+  }, [booking, historySortOrder]);
+
+  const handleOpenStatusModal = () => {
+    // Default next logical status
+    const current = booking.status;
+    let nextSt: BookingStatus = 'CONFIRMED';
+    if (current === 'PROPOSED') nextSt = 'CONFIRMED';
+    else if (current === 'CONFIRMED') nextSt = 'IN_PROGRESS';
+    else if (current === 'IN_PROGRESS') nextSt = 'COMPLETED';
+    else if (current === 'COMPLETED') nextSt = 'COMPLETED';
+
+    setSelectedNewStatus(nextSt);
+    setStatusReason('');
+    setStatusNotes('');
+    setShowStatusModal(true);
+    sounds.modalOpen();
+  };
+
+  const handleApplyStatusChange = () => {
+    if (selectedNewStatus === booking.status) {
+      alert('Selected status is the same as the current status.');
+      return;
+    }
+
+    const reasonToSave = statusReason.trim() || `Status updated to ${selectedNewStatus.replace('_', ' ')}`;
+    
+    changeBookingStatus(bookingId, selectedNewStatus, {
+      reason: reasonToSave,
+      notes: statusNotes.trim() || undefined,
+      actor: {
+        name: user?.name || 'Administrator',
+        role: user?.role || 'SUPER_ADMIN',
+        email: user?.email,
+      }
+    });
+
+    sounds.success();
+    setShowStatusModal(false);
+    setStatusToast(`Status successfully changed to ${selectedNewStatus.replace('_', ' ')}`);
+    setTimeout(() => setStatusToast(null), 4000);
+  };
+
+  const handleExportHistoryCSV = () => {
+    const headers = ['Transition Date', 'Changed By Name', 'Role', 'Email', 'From Status', 'To Status', 'Reason', 'Notes', 'Source'];
+    const rows = historyEntries.map(e => [
+      `"${new Date(e.changedAt).toLocaleString()}"`,
+      `"${e.changedBy.name}"`,
+      `"${e.changedBy.role}"`,
+      `"${e.changedBy.email || ''}"`,
+      `"${e.fromStatus || 'INITIAL'}"`,
+      `"${e.toStatus}"`,
+      `"${(e.reason || '').replace(/"/g, '""')}"`,
+      `"${(e.notes || '').replace(/"/g, '""')}"`,
+      `"${e.source || 'ADMIN_PORTAL'}"`
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `${booking.bookingCode}-status-history.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    sounds.click();
+    setStatusToast('Exported Status History to CSV');
+    setTimeout(() => setStatusToast(null), 3000);
+  };
+
+  const getReasonPresets = (st: BookingStatus) => {
+    switch (st) {
+      case 'CONFIRMED':
+        return [
+          'Advance payment (50%) verified via Nabil Bank Transfer',
+          'Full payment received in cash / SWIFT transfer',
+          'TIMS card and national park trekking permits confirmed',
+          'Hotel & transport reservation deposits confirmed'
+        ];
+      case 'IN_PROGRESS':
+        return [
+          'Tour group departed Kathmandu base / airport arrival',
+          'Tour leader Prakash Gurung verified pax briefing & gear',
+          'Jeep / Tourist bus departure confirmed by dispatch',
+          'First stage trailhead reached on schedule'
+        ];
+      case 'COMPLETED':
+        return [
+          'Tour successfully completed and travelers safely returned',
+          'All vendor service accounts reconciled & settled',
+          'Guest review & feedback recorded (5-star satisfaction)',
+          'Trip log filed and photo archives stored'
+        ];
+      case 'CANCELLED':
+        return [
+          'Client cancellation request due to personal reasons',
+          'Adverse Himalayan weather & avalanche warning',
+          'Advance payment window expired without receipt',
+          'Flight cancellation and itinerary aborted'
+        ];
+      case 'PROPOSED':
+      default:
+        return [
+          'Itinerary and quote modified per client specifications',
+          'Reopened proposal for pax count & hotel tier revision',
+          'Initial proposal submitted for institutional review'
+        ];
+    }
+  };
+
+  const workflowSteps: { status: BookingStatus; label: string; desc: string }[] = [
+    { status: 'PROPOSED', label: 'Proposed', desc: 'Inquiry & Quote' },
+    { status: 'CONFIRMED', label: 'Confirmed', desc: 'Deposit & Locked' },
+    { status: 'IN_PROGRESS', label: 'In Progress', desc: 'Tour Underway' },
+    { status: 'COMPLETED', label: 'Completed', desc: 'Debriefed & Settled' },
+  ];
+
+  const getWorkflowStepIndex = (st: BookingStatus) => {
+    switch (st) {
+      case 'PROPOSED': return 0;
+      case 'CONFIRMED': return 1;
+      case 'IN_PROGRESS': return 2;
+      case 'COMPLETED': return 3;
+      default: return -1;
+    }
+  };
+
+  const currentStepIdx = getWorkflowStepIndex(booking.status);
 
   return (
     <div className="p-6 animate-fade-in">
+      {/* Toast Notification */}
+      {statusToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-3 animate-fade-in border border-slate-700">
+          <CheckCircle2 size={18} className="text-green-400 shrink-0" />
+          <p className="text-sm font-medium">{statusToast}</p>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center gap-4 mb-6 no-print">
         <button onClick={() => onNavigate('bookings')} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
@@ -121,6 +395,13 @@ export default function BookingDetail({ bookingId, onNavigate }: BookingDetailPr
           <p className="text-slate-500 text-sm mt-0.5">{booking.clientName} • {booking.packageName || 'Custom Itinerary'}</p>
         </div>
         <div className="flex items-center gap-2">
+          <button 
+            onClick={handleOpenStatusModal} 
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-paila-blue to-blue-700 text-white rounded-lg text-sm font-medium shadow-sm hover:opacity-95 transition-all"
+          >
+            <RefreshCw size={15} />
+            Update Status
+          </button>
           <button onClick={() => { sounds.click(); handleEdit(); }} className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors">
             <Edit size={16} />
             Edit
@@ -133,7 +414,14 @@ export default function BookingDetail({ bookingId, onNavigate }: BookingDetailPr
             <Printer size={16} />
             Print
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-paila-blue text-white rounded-lg text-sm font-medium hover:bg-paila-blue-light transition-colors">
+          <button 
+            onClick={() => {
+              sounds.modalOpen();
+              setViewingDocument('itinerary-summary');
+            }} 
+            className="flex items-center gap-2 px-4 py-2 bg-paila-blue text-white rounded-lg text-sm font-medium hover:bg-paila-blue-light transition-colors shadow-xs cursor-pointer"
+            title="Generate and Download Printer-Friendly PDF Summary"
+          >
             <FileText size={16} />
             Generate PDF
           </button>
@@ -142,15 +430,31 @@ export default function BookingDetail({ bookingId, onNavigate }: BookingDetailPr
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 bg-slate-100 rounded-lg p-1 no-print">
-        {(['overview', 'itinerary', 'operations', 'documents'] as const).map(tab => (
+        {[
+          { id: 'overview', label: 'Overview' },
+          { id: 'itinerary', label: 'Itinerary' },
+          { id: 'operations', label: 'Operations' },
+          { id: 'status-history', label: 'Status History', count: historyEntries.length },
+          { id: 'documents', label: 'Documents' },
+        ].map(tab => (
           <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-all ${
-              activeTab === tab ? 'bg-white text-paila-blue shadow-sm' : 'text-slate-600 hover:text-slate-900'
+            key={tab.id}
+            onClick={() => {
+              sounds.tabSwitch();
+              setActiveTab(tab.id as any);
+            }}
+            className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-all flex items-center justify-center gap-2 ${
+              activeTab === tab.id ? 'bg-white text-paila-blue shadow-sm font-semibold' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            <span>{tab.label}</span>
+            {tab.count !== undefined && (
+              <span className={`text-[11px] px-1.5 py-0.2 rounded-full font-bold ${
+                activeTab === tab.id ? 'bg-paila-blue/10 text-paila-blue' : 'bg-slate-200 text-slate-600'
+              }`}>
+                {tab.count}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -196,7 +500,7 @@ export default function BookingDetail({ bookingId, onNavigate }: BookingDetailPr
                 </div>
                 <div className="bg-red-50 rounded-lg p-4 text-center">
                   <p className="text-xs text-red-600 mb-1">Balance Due</p>
-                  <p className="text-lg font-bold text-red-600">NPR {(booking.totalAgreedAmount - booking.advanceReceived).toLocaleString()}</p>
+                  <p className="text-lg font-bold text-red-600">NPR {Math.max(0, (Number(booking.totalAgreedAmount) || 0) - (Number(booking.advanceReceived) || 0)).toLocaleString()}</p>
                 </div>
               </div>
             </div>
@@ -225,7 +529,7 @@ export default function BookingDetail({ bookingId, onNavigate }: BookingDetailPr
                 <div className="mt-4 pt-4 border-t border-slate-200 flex justify-between text-sm">
                   <span className="text-slate-500">Total Vendor Cost: <strong>NPR {totalVendorCost.toLocaleString()}</strong></span>
                   <span className="text-slate-500">Paid: <strong className="text-green-600">NPR {totalVendorPaid.toLocaleString()}</strong></span>
-                  <span className="text-slate-500">Due: <strong className="text-red-600">NPR {(totalVendorCost - totalVendorPaid).toLocaleString()}</strong></span>
+                  <span className="text-slate-500">Due: <strong className="text-red-600">NPR {Math.max(0, totalVendorCost - totalVendorPaid).toLocaleString()}</strong></span>
                 </div>
               </div>
             )}
@@ -265,6 +569,27 @@ export default function BookingDetail({ bookingId, onNavigate }: BookingDetailPr
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* PDF Summary Quick Card */}
+            <div className="bg-gradient-to-br from-slate-900 to-paila-blue text-white rounded-xl p-5 shadow-sm">
+              <div className="flex items-center gap-2 mb-2">
+                <FileText size={18} className="text-paila-orange" />
+                <h3 className="font-bold text-sm">Printer-Friendly PDF Dossier</h3>
+              </div>
+              <p className="text-xs text-slate-200 leading-relaxed mb-4">
+                Export an official print-ready summary of this booking's day-by-day itinerary, live operational status, allocations, and financial balance.
+              </p>
+              <button
+                onClick={() => {
+                  sounds.modalOpen();
+                  setViewingDocument('itinerary-summary');
+                }}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-paila-orange hover:bg-paila-orange-light text-white font-semibold text-xs rounded-lg transition-all shadow-xs cursor-pointer"
+              >
+                <Printer size={14} />
+                <span>Generate & Download Summary</span>
+              </button>
             </div>
 
             {/* Status Timeline */}
@@ -309,7 +634,24 @@ export default function BookingDetail({ bookingId, onNavigate }: BookingDetailPr
       {/* Itinerary Tab */}
       {activeTab === 'itinerary' && (
         <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <h3 className="font-semibold text-slate-900 mb-6">Day-by-Day Itinerary</h3>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-6 pb-4 border-b border-slate-100">
+            <div>
+              <h3 className="font-semibold text-slate-900 text-base">Day-by-Day Itinerary & Program</h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Detailed day-wise travel schedule, mountain routes, meal plans and overnight halts.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                sounds.modalOpen();
+                setViewingDocument('itinerary-summary');
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-paila-blue text-white rounded-lg text-xs font-semibold hover:bg-paila-blue-light transition-all shadow-2xs cursor-pointer"
+            >
+              <Printer size={14} />
+              <span>Print / Download Itinerary PDF</span>
+            </button>
+          </div>
           {booking.itineraryDays.length > 0 ? (
             <div className="relative">
               {/* Timeline line */}
@@ -429,6 +771,273 @@ export default function BookingDetail({ bookingId, onNavigate }: BookingDetailPr
         </div>
       )}
 
+      {/* Status History Tab */}
+      {activeTab === 'status-history' && (
+        <div className="space-y-6">
+          {/* Workflow Stage Progress Stepper */}
+          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-100">
+              <div>
+                <h3 className="font-semibold text-slate-900 text-base flex items-center gap-2">
+                  <History size={18} className="text-paila-blue" />
+                  Booking Lifecycle & Status Timeline
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Complete audit trail of status transitions, operational updates, and responsible personnel.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleExportHistoryCSV}
+                  className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg text-xs font-medium transition-colors"
+                  title="Export audit log to CSV"
+                >
+                  <Download size={14} />
+                  Export Log
+                </button>
+                <button
+                  onClick={handleOpenStatusModal}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-paila-blue hover:bg-paila-blue-light text-white rounded-lg text-xs font-semibold shadow-sm transition-all"
+                >
+                  <RefreshCw size={13} />
+                  Change Status
+                </button>
+              </div>
+            </div>
+
+            {/* Stepper Steps */}
+            {booking.status === 'CANCELLED' ? (
+              <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3">
+                <div className="w-9 h-9 rounded-full bg-rose-100 flex items-center justify-center shrink-0 mt-0.5">
+                  <AlertCircle size={20} className="text-rose-600" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-rose-900">Booking Cancelled</h4>
+                  <p className="text-xs text-rose-700 mt-1">
+                    This booking has been flagged as cancelled. See the status change entries below for the recorded reason and personnel details.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 relative">
+                {workflowSteps.map((step, idx) => {
+                  const isCompleted = currentStepIdx > idx;
+                  const isCurrent = currentStepIdx === idx;
+                  return (
+                    <div
+                      key={step.status}
+                      className={`relative p-3.5 rounded-xl border transition-all ${
+                        isCurrent
+                          ? 'bg-blue-50/70 border-paila-blue shadow-sm ring-1 ring-paila-blue/30'
+                          : isCompleted
+                          ? 'bg-slate-50/90 border-slate-200'
+                          : 'bg-white border-slate-200 opacity-60'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span
+                          className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                            isCurrent
+                              ? 'bg-paila-blue text-white shadow-sm'
+                              : isCompleted
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-slate-200 text-slate-600'
+                          }`}
+                        >
+                          {isCompleted ? <Check size={13} /> : idx + 1}
+                        </span>
+                        {isCurrent && (
+                          <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 bg-paila-blue text-white rounded-full">
+                            Active
+                          </span>
+                        )}
+                        {isCompleted && (
+                          <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                            Passed
+                          </span>
+                        )}
+                      </div>
+                      <h4 className={`text-xs font-bold ${isCurrent ? 'text-paila-blue' : 'text-slate-900'}`}>
+                        {step.label}
+                      </h4>
+                      <p className="text-[11px] text-slate-500 mt-0.5">{step.desc}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Timeline Stream */}
+          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-semibold text-slate-900">Activity Log & Milestone History</span>
+                <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">
+                  {historyEntries.length} {historyEntries.length === 1 ? 'event' : 'events'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-400">Order:</span>
+                <button
+                  onClick={() => setHistorySortOrder(prev => prev === 'NEWEST' ? 'OLDEST' : 'NEWEST')}
+                  className="px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
+                >
+                  {historySortOrder === 'NEWEST' ? 'Newest First ↓' : 'Oldest First ↑'}
+                </button>
+              </div>
+            </div>
+
+            <div className="relative pl-6 sm:pl-8 space-y-8 before:absolute before:left-3 sm:before:left-4 before:top-3 before:bottom-3 before:w-0.5 before:bg-slate-200">
+              {historyEntries.map((entry, index) => {
+                const isLatest = index === 0 && historySortOrder === 'NEWEST';
+                const roleBadge = getRoleBadge(entry.changedBy?.role);
+                const toStatus = entry.toStatus;
+                const fromStatus = entry.fromStatus;
+
+                const getStatusVisuals = (st: BookingStatus) => {
+                  switch (st) {
+                    case 'PROPOSED':
+                      return {
+                        bulletBg: 'bg-amber-500 text-white ring-amber-100',
+                        badgeStyle: 'bg-amber-100 text-amber-800 border-amber-200',
+                        icon: FileText,
+                      };
+                    case 'CONFIRMED':
+                      return {
+                        bulletBg: 'bg-blue-600 text-white ring-blue-100',
+                        badgeStyle: 'bg-blue-100 text-blue-800 border-blue-200',
+                        icon: CheckCircle2,
+                      };
+                    case 'IN_PROGRESS':
+                      return {
+                        bulletBg: 'bg-emerald-600 text-white ring-emerald-100',
+                        badgeStyle: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+                        icon: Mountain,
+                      };
+                    case 'COMPLETED':
+                      return {
+                        bulletBg: 'bg-slate-800 text-white ring-slate-100',
+                        badgeStyle: 'bg-slate-100 text-slate-800 border-slate-200',
+                        icon: CheckCircle,
+                      };
+                    case 'CANCELLED':
+                      return {
+                        bulletBg: 'bg-rose-600 text-white ring-rose-100',
+                        badgeStyle: 'bg-rose-100 text-rose-800 border-rose-200',
+                        icon: AlertCircle,
+                      };
+                  }
+                };
+
+                const visuals = getStatusVisuals(toStatus);
+                const IconComponent = visuals.icon;
+
+                return (
+                  <div key={entry.id || index} className="relative group">
+                    {/* Node marker on vertical line */}
+                    <div
+                      className={`absolute -left-6 sm:-left-8 top-1 w-6 sm:w-8 h-6 sm:h-8 rounded-full flex items-center justify-center shadow-sm ring-4 ${
+                        visuals.bulletBg
+                      } ${isLatest ? 'animate-pulse' : ''}`}
+                    >
+                      <IconComponent size={14} />
+                    </div>
+
+                    {/* Timeline card content */}
+                    <div className="bg-slate-50/70 group-hover:bg-slate-50 border border-slate-200 rounded-xl p-4 sm:p-5 transition-all shadow-xs">
+                      {/* Top Header of Card */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs font-semibold text-slate-700">Status Changed:</span>
+                          {fromStatus ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs px-2 py-0.5 rounded-md font-semibold bg-slate-200 text-slate-700">
+                                {fromStatus.replace('_', ' ')}
+                              </span>
+                              <ArrowRight size={13} className="text-slate-400" />
+                              <span className={`text-xs px-2 py-0.5 rounded-md font-semibold border ${visuals.badgeStyle}`}>
+                                {toStatus.replace('_', ' ')}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className={`text-xs px-2 py-0.5 rounded-md font-semibold border ${visuals.badgeStyle}`}>
+                              Initial: {toStatus.replace('_', ' ')}
+                            </span>
+                          )}
+
+                          {isLatest && (
+                            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-paila-blue text-white rounded-full">
+                              Latest State
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Timestamp */}
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500 shrink-0">
+                          <Clock size={13} className="text-slate-400" />
+                          <span className="font-medium text-slate-700">{formatTimestamp(entry.changedAt)}</span>
+                          <span className="text-slate-400">({getRelativeTime(entry.changedAt)})</span>
+                        </div>
+                      </div>
+
+                      {/* Reason Box */}
+                      {entry.reason && (
+                        <div className="bg-white border border-slate-200/80 rounded-lg p-3 my-2.5 text-xs text-slate-800 flex items-start gap-2 shadow-2xs">
+                          <MessageSquare size={15} className="text-paila-blue shrink-0 mt-0.5" />
+                          <div className="flex-1">
+                            <span className="font-semibold text-slate-900 block mb-0.5">Rationale / Note:</span>
+                            <p className="text-slate-700 leading-relaxed">{entry.reason}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Additional Notes */}
+                      {entry.notes && (
+                        <div className="text-xs text-slate-600 bg-amber-50/70 border border-amber-200/60 rounded-lg p-2.5 my-2">
+                          <span className="font-semibold text-amber-900">Additional Internal Notes: </span>
+                          <span>{entry.notes}</span>
+                        </div>
+                      )}
+
+                      {/* Footer: Personnel & Source Attribution */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 pt-3 mt-3 border-t border-slate-200/60 text-xs">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-[10px] uppercase">
+                            {entry.changedBy?.name ? entry.changedBy.name.charAt(0) : 'U'}
+                          </div>
+                          <span className="font-medium text-slate-900">
+                            {entry.changedBy?.name || 'System Staff'}
+                          </span>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${roleBadge.color}`}>
+                            {roleBadge.label}
+                          </span>
+                          {entry.changedBy?.email && (
+                            <span className="text-slate-400 text-[11px] hidden sm:inline">
+                              • {entry.changedBy.email}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1 text-[11px] text-slate-400">
+                          <span>Via:</span>
+                          <span className="font-medium text-slate-600 bg-white border border-slate-200 px-1.5 py-0.5 rounded text-[10px]">
+                            {entry.source === 'FIELD_APP' ? 'Tour Operator Field App' :
+                             entry.source === 'BULK_ACTION' ? 'Bulk Action Manager' :
+                             entry.source === 'OPERATIONS' ? 'Operations Dispatch' :
+                             'Admin Web Portal'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Documents Tab */}
       {activeTab === 'documents' && (
         <div className="bg-white rounded-xl border border-slate-200 p-6">
@@ -468,19 +1077,40 @@ export default function BookingDetail({ bookingId, onNavigate }: BookingDetailPr
               </div>
 
               {/* Document Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* Itinerary & Status Summary (PDF) */}
+                <button
+                  onClick={() => {
+                    sounds.modalOpen();
+                    setViewingDocument('itinerary-summary');
+                  }}
+                  className="p-5 border-2 border-dashed border-paila-blue/40 bg-blue-50/30 rounded-xl hover:border-paila-blue hover:bg-blue-50/70 transition-all text-center group cursor-pointer relative overflow-hidden"
+                >
+                  <div className="absolute top-2 right-2">
+                    <span className="px-1.5 py-0.5 bg-paila-blue text-white text-[9px] font-bold rounded uppercase">
+                      New
+                    </span>
+                  </div>
+                  <FileText size={30} className="mx-auto text-paila-blue group-hover:scale-110 transition-transform mb-2.5" />
+                  <p className="font-semibold text-sm text-slate-900">Itinerary & Status Summary</p>
+                  <p className="text-xs text-slate-500 mt-1">Full roadmap, status log & logistics</p>
+                  <span className="inline-block mt-3 text-[10px] font-bold text-paila-blue bg-blue-100 px-2.5 py-0.5 rounded-full">
+                    Preview PDF →
+                  </span>
+                </button>
+
                 {/* Tour Proposal & Quote */}
                 <button
                   onClick={() => {
                     sounds.modalOpen();
                     setViewingDocument('proposal');
                   }}
-                  className="p-6 border-2 border-dashed border-slate-200 rounded-xl hover:border-paila-blue hover:bg-blue-50/50 transition-all text-center group"
+                  className="p-5 border-2 border-dashed border-slate-200 rounded-xl hover:border-paila-blue hover:bg-blue-50/50 transition-all text-center group cursor-pointer"
                 >
-                  <FileText size={32} className="mx-auto text-slate-400 group-hover:text-paila-blue transition-colors mb-3" />
+                  <FileText size={30} className="mx-auto text-slate-400 group-hover:text-paila-blue transition-colors mb-2.5" />
                   <p className="font-medium text-sm text-slate-900">Tour Proposal & Quote</p>
                   <p className="text-xs text-slate-500 mt-1">Itinerary, pricing & terms</p>
-                  <span className="inline-block mt-3 text-[10px] font-semibold text-paila-blue bg-blue-100 px-2 py-0.5 rounded-full">
+                  <span className="inline-block mt-3 text-[10px] font-semibold text-paila-blue bg-blue-100 px-2.5 py-0.5 rounded-full">
                     Preview →
                   </span>
                 </button>
@@ -491,12 +1121,12 @@ export default function BookingDetail({ bookingId, onNavigate }: BookingDetailPr
                     sounds.modalOpen();
                     setViewingDocument('voucher');
                   }}
-                  className="p-6 border-2 border-dashed border-slate-200 rounded-xl hover:border-paila-orange hover:bg-orange-50/50 transition-all text-center group"
+                  className="p-5 border-2 border-dashed border-slate-200 rounded-xl hover:border-paila-orange hover:bg-orange-50/50 transition-all text-center group cursor-pointer"
                 >
-                  <FileText size={32} className="mx-auto text-slate-400 group-hover:text-paila-orange transition-colors mb-3" />
+                  <FileText size={30} className="mx-auto text-slate-400 group-hover:text-paila-orange transition-colors mb-2.5" />
                   <p className="font-medium text-sm text-slate-900">Booking Voucher</p>
                   <p className="text-xs text-slate-500 mt-1">Guest confirmation document</p>
-                  <span className="inline-block mt-3 text-[10px] font-semibold text-paila-orange bg-orange-100 px-2 py-0.5 rounded-full">
+                  <span className="inline-block mt-3 text-[10px] font-semibold text-paila-orange bg-orange-100 px-2.5 py-0.5 rounded-full">
                     Preview →
                   </span>
                 </button>
@@ -507,12 +1137,12 @@ export default function BookingDetail({ bookingId, onNavigate }: BookingDetailPr
                     sounds.modalOpen();
                     setViewingDocument('invoice');
                   }}
-                  className="p-6 border-2 border-dashed border-slate-200 rounded-xl hover:border-green-500 hover:bg-green-50/50 transition-all text-center group"
+                  className="p-5 border-2 border-dashed border-slate-200 rounded-xl hover:border-green-500 hover:bg-green-50/50 transition-all text-center group cursor-pointer"
                 >
-                  <FileText size={32} className="mx-auto text-slate-400 group-hover:text-green-600 transition-colors mb-3" />
+                  <FileText size={30} className="mx-auto text-slate-400 group-hover:text-green-600 transition-colors mb-2.5" />
                   <p className="font-medium text-sm text-slate-900">Tax / Proforma Invoice</p>
                   <p className="text-xs text-slate-500 mt-1">Payment schedule & receipt</p>
-                  <span className="inline-block mt-3 text-[10px] font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+                  <span className="inline-block mt-3 text-[10px] font-semibold text-green-700 bg-green-100 px-2.5 py-0.5 rounded-full">
                     Preview →
                   </span>
                 </button>
@@ -521,24 +1151,31 @@ export default function BookingDetail({ bookingId, onNavigate }: BookingDetailPr
               {/* Quick Print All */}
               <div className="mt-6 pt-6 border-t border-slate-200">
                 <p className="text-xs text-slate-500 mb-3">Quick Actions:</p>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setViewingDocument('itinerary-summary')}
+                    className="flex items-center gap-2 px-4 py-2 bg-paila-blue text-white rounded-lg text-xs font-semibold hover:bg-paila-blue-light transition-colors shadow-2xs cursor-pointer"
+                  >
+                    <Printer size={14} />
+                    Print Itinerary & Status Summary
+                  </button>
                   <button
                     onClick={() => setViewingDocument('proposal')}
-                    className="flex items-center gap-2 px-4 py-2 bg-paila-blue text-white rounded-lg text-xs font-medium hover:bg-paila-blue-light transition-colors"
+                    className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg text-xs font-medium hover:bg-slate-900 transition-colors cursor-pointer"
                   >
                     <Printer size={14} />
                     Print Proposal
                   </button>
                   <button
                     onClick={() => setViewingDocument('voucher')}
-                    className="flex items-center gap-2 px-4 py-2 bg-paila-orange text-white rounded-lg text-xs font-medium hover:bg-paila-orange-light transition-colors"
+                    className="flex items-center gap-2 px-4 py-2 bg-paila-orange text-white rounded-lg text-xs font-medium hover:bg-paila-orange-light transition-colors cursor-pointer"
                   >
                     <Printer size={14} />
                     Print Voucher
                   </button>
                   <button
                     onClick={() => setViewingDocument('invoice')}
-                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700 transition-colors"
+                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700 transition-colors cursor-pointer"
                   >
                     <Printer size={14} />
                     Print Invoice
@@ -557,6 +1194,173 @@ export default function BookingDetail({ bookingId, onNavigate }: BookingDetailPr
           documentType={viewingDocument}
           onClose={() => setViewingDocument(null)}
         />
+      )}
+
+      {/* Status Change Modal */}
+      {showStatusModal && booking && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-xl p-6 animate-fade-in max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-paila-blue/10 flex items-center justify-center text-paila-blue">
+                  <RefreshCw size={20} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">Update Booking Status</h3>
+                  <p className="text-xs text-slate-500">
+                    {booking.bookingCode} • {booking.clientName}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowStatusModal(false)}
+                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-5">
+              {/* Current Status Banner */}
+              <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                <span className="text-slate-500">Current Status:</span>
+                <span className={`px-2.5 py-1 rounded-md font-bold text-xs border ${getStatusColor(booking.status)}`}>
+                  {booking.status.replace('_', ' ')}
+                </span>
+              </div>
+
+              {/* Status Picker Grid */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  Select New Target Status
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {[
+                    { status: 'PROPOSED' as BookingStatus, label: 'Proposed', desc: 'Inquiry / quotation stage', color: 'border-amber-300 text-amber-900 bg-amber-50/60' },
+                    { status: 'CONFIRMED' as BookingStatus, label: 'Confirmed', desc: 'Advance deposit received & locked', color: 'border-blue-300 text-blue-900 bg-blue-50/60' },
+                    { status: 'IN_PROGRESS' as BookingStatus, label: 'In Progress', desc: 'Tour group active on the field', color: 'border-emerald-300 text-emerald-900 bg-emerald-50/60' },
+                    { status: 'COMPLETED' as BookingStatus, label: 'Completed', desc: 'Concluded & accounts settled', color: 'border-slate-400 text-slate-900 bg-slate-100' },
+                    { status: 'CANCELLED' as BookingStatus, label: 'Cancelled', desc: 'Trip cancelled / refunded', color: 'border-rose-300 text-rose-900 bg-rose-50/60' },
+                  ].map(option => {
+                    const isSelected = selectedNewStatus === option.status;
+                    const isCurrent = booking.status === option.status;
+                    return (
+                      <button
+                        key={option.status}
+                        type="button"
+                        onClick={() => {
+                          sounds.click();
+                          setSelectedNewStatus(option.status);
+                        }}
+                        className={`text-left p-3 rounded-xl border-2 transition-all flex items-start gap-2.5 ${
+                          isSelected
+                            ? `${option.color} ring-2 ring-paila-blue shadow-xs font-semibold`
+                            : 'border-slate-200 hover:border-slate-300 bg-white'
+                        }`}
+                      >
+                        <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
+                          isSelected ? 'border-paila-blue bg-paila-blue text-white' : 'border-slate-300'
+                        }`}>
+                          {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-bold text-slate-900">{option.label}</span>
+                            {isCurrent && (
+                              <span className="text-[10px] text-slate-500 bg-slate-200 px-1.5 py-0.2 rounded">
+                                (Current)
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-500 mt-0.5 leading-tight">{option.desc}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Preset Reason Suggestions */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center gap-1">
+                  <Sparkles size={13} className="text-paila-orange" />
+                  Quick Transition Rationale Suggestions
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {getReasonPresets(selectedNewStatus).map((preset, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        sounds.click();
+                        setStatusReason(preset);
+                      }}
+                      className="text-[11px] px-2.5 py-1 bg-slate-100 hover:bg-paila-blue/10 hover:text-paila-blue hover:border-paila-blue/30 border border-slate-200 rounded-lg text-slate-700 transition-all text-left"
+                    >
+                      + {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Rationale Input */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Transition Reason / Explanation <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={statusReason}
+                  onChange={e => setStatusReason(e.target.value)}
+                  placeholder="e.g. 50% Advance received via Nabil Bank transfer #NAB-2026-081"
+                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-paila-blue/20 focus:border-paila-blue outline-none"
+                />
+              </div>
+
+              {/* Internal Notes */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Additional Internal Notes (Optional)
+                </label>
+                <textarea
+                  value={statusNotes}
+                  onChange={e => setStatusNotes(e.target.value)}
+                  rows={2}
+                  placeholder="Any operational observations, voucher notes, or vendor reminders..."
+                  className="w-full px-3.5 py-2 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-paila-blue/20 focus:border-paila-blue outline-none resize-none"
+                />
+              </div>
+
+              {/* Attribution Signature Box */}
+              <div className="bg-blue-50/60 border border-blue-100 rounded-xl p-3 text-xs flex items-center gap-3">
+                <Shield size={18} className="text-paila-blue shrink-0" />
+                <div className="text-slate-600">
+                  <span>Signatory attribution: </span>
+                  <span className="font-bold text-slate-900">{user?.name || 'Super Admin'}</span>
+                  <span className="text-paila-blue font-semibold ml-1">({(user?.role || 'SUPER_ADMIN').replace('_', ' ')})</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6 pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowStatusModal(false)}
+                className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleApplyStatusChange}
+                className="flex-1 px-4 py-2.5 bg-paila-blue hover:bg-paila-blue-light text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-2"
+              >
+                <Check size={15} />
+                Save & Record Status Transition
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Edit Modal */}

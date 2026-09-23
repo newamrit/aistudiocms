@@ -2,7 +2,7 @@ import { useFieldActivity, FieldActivity as ActivityType } from '../contexts/Fie
 import { useState } from 'react';
 import { 
   Activity, MapPin, DollarSign, RefreshCw, CheckCircle, Clock, 
-  AlertTriangle, Bell, Filter, User, Calendar, TrendingUp
+  AlertTriangle, Bell, Filter, User, Calendar, TrendingUp, Image as ImageIcon, X, Download, ExternalLink
 } from 'lucide-react';
 import { formatNepalTime, formatRelativeTime } from '../utils/timeFormat';
 import { sounds } from '../utils/sounds';
@@ -12,6 +12,7 @@ export default function FieldActivity() {
   const [filterType, setFilterType] = useState<string>('ALL');
   const [filterPriority, setFilterPriority] = useState<string>('ALL');
   const [showAcknowledged, setShowAcknowledged] = useState(true);
+  const [selectedReceipt, setSelectedReceipt] = useState<{ title: string; image: string; actor: string; date: string; amount?: number } | null>(null);
 
   const unacknowledgedCount = getUnacknowledgedCount();
 
@@ -239,22 +240,76 @@ export default function FieldActivity() {
 
                         {/* Metadata display */}
                         {activity.metadata && Object.keys(activity.metadata).length > 0 && (
-                          <div className="mt-3 p-3 bg-white rounded border border-slate-200">
-                            <p className="text-xs font-medium text-slate-700 mb-2">Details:</p>
-                            <div className="grid grid-cols-2 gap-2 text-xs">
-                              {Object.entries(activity.metadata).map(([key, value]) => (
-                                <div key={key}>
-                                  <span className="text-slate-500 capitalize">
-                                    {key.replace(/([A-Z])/g, ' $1').trim()}:
-                                  </span>{' '}
-                                  <span className="font-medium text-slate-900">
-                                    {typeof value === 'number' && key.toLowerCase().includes('amount')
-                                      ? `NPR ${value.toLocaleString()}`
-                                      : String(value)}
-                                  </span>
-                                </div>
-                              ))}
+                          <div className="mt-3 p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+                            <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">Details:</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                              {Object.entries(activity.metadata).map(([key, value]) => {
+                                if (key === 'receiptPreview' || key === 'receipt_image_url' || key === 'receiptImage') return null;
+                                return (
+                                  <div key={key}>
+                                    <span className="text-slate-500 capitalize">
+                                      {key.replace(/([A-Z])/g, ' $1').trim()}:
+                                    </span>{' '}
+                                    <span className="font-medium text-slate-900 dark:text-white">
+                                      {typeof value === 'number' && key.toLowerCase().includes('amount')
+                                        ? `NPR ${value.toLocaleString()}`
+                                        : String(value)}
+                                    </span>
+                                  </div>
+                                );
+                              })}
                             </div>
+
+                            {/* Receipt Image Thumbnail for Admin Inspection */}
+                            {(activity.metadata?.receiptPreview || activity.metadata?.receipt_image_url || activity.metadata?.receiptImage) && (
+                              <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700/60 flex items-center gap-3">
+                                <div 
+                                  onClick={() => {
+                                    sounds.click();
+                                    setSelectedReceipt({
+                                      title: activity.title,
+                                      image: String(activity.metadata?.receiptPreview || activity.metadata?.receipt_image_url || activity.metadata?.receiptImage),
+                                      actor: activity.tourLeaderName,
+                                      date: formatNepalTime(activity.timestamp),
+                                      amount: typeof activity.metadata?.amount === 'number' ? activity.metadata.amount : undefined
+                                    });
+                                  }}
+                                  className="group relative w-14 h-14 rounded-lg overflow-hidden border border-slate-300 dark:border-slate-600 cursor-pointer bg-slate-100 dark:bg-slate-900 shrink-0 shadow-xs hover:border-blue-500 transition-all"
+                                  title="Click to view full receipt"
+                                >
+                                  <img 
+                                    src={String(activity.metadata?.receiptPreview || activity.metadata?.receipt_image_url || activity.metadata?.receiptImage)} 
+                                    alt="Receipt Thumbnail" 
+                                    className="w-full h-full object-cover group-hover:scale-110 transition-transform" 
+                                  />
+                                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white">
+                                    <ImageIcon size={16} />
+                                  </div>
+                                </div>
+                                <div>
+                                  <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 block">
+                                    Verified Expense Receipt Attached
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      sounds.click();
+                                      setSelectedReceipt({
+                                        title: activity.title,
+                                        image: String(activity.metadata?.receiptPreview || activity.metadata?.receipt_image_url || activity.metadata?.receiptImage),
+                                        actor: activity.tourLeaderName,
+                                        date: formatNepalTime(activity.timestamp),
+                                        amount: typeof activity.metadata?.amount === 'number' ? activity.metadata.amount : undefined
+                                      });
+                                    }}
+                                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-semibold flex items-center gap-1 mt-0.5 cursor-pointer"
+                                  >
+                                    <ImageIcon size={12} />
+                                    <span>Inspect Original Receipt Photo</span>
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -285,6 +340,77 @@ export default function FieldActivity() {
           )}
         </div>
       </div>
+
+      {/* High-Resolution Receipt Inspection Modal for Admins */}
+      {selectedReceipt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/60">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                  <ImageIcon size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                    Field Expense Receipt Inspection
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Logged by {selectedReceipt.actor} • {selectedReceipt.date}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedReceipt(null)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Receipt Image Display Area */}
+            <div className="flex-1 overflow-auto p-4 sm:p-6 bg-slate-950/90 flex items-center justify-center min-h-[300px]">
+              <img 
+                src={selectedReceipt.image} 
+                alt="Original Field Receipt" 
+                className="max-h-[60vh] max-w-full object-contain rounded-xl shadow-lg border border-slate-700/50"
+              />
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 sm:p-5 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50 dark:bg-slate-800/60">
+              <div className="text-xs text-slate-600 dark:text-slate-300">
+                {selectedReceipt.amount !== undefined && (
+                  <span className="font-bold text-slate-900 dark:text-white mr-2">
+                    Amount: NPR {selectedReceipt.amount.toLocaleString()}
+                  </span>
+                )}
+                <span>{selectedReceipt.title}</span>
+              </div>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <a
+                  href={selectedReceipt.image}
+                  download={`receipt_${Date.now()}.jpg`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex-1 sm:flex-initial px-4 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-white text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-1.5"
+                >
+                  <Download size={14} />
+                  <span>Download Photo</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setSelectedReceipt(null)}
+                  className="flex-1 sm:flex-initial px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all shadow-md active:scale-95"
+                >
+                  Close Inspection
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

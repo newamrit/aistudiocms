@@ -63,14 +63,59 @@ class ApiClient {
         headers,
       });
 
+      const contentType = response.headers.get('content-type') || '';
+      const isJson = contentType.includes('application/json');
+
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'API request failed');
+        let errorMsg = `API request failed with status ${response.status}`;
+        try {
+          if (isJson) {
+            const error = await response.json();
+            errorMsg = error.error || error.message || errorMsg;
+          } else {
+            const text = await response.text();
+            if (text && !text.includes('<!doctype') && !text.includes('<html')) {
+              errorMsg = text;
+            }
+          }
+        } catch {
+          // Ignore parsing error for error body
+        }
+        throw new Error(errorMsg);
       }
 
-      return await response.json();
+      // Handle 204 No Content or empty responses
+      if (response.status === 204) {
+        return {} as T;
+      }
+
+      if (isJson) {
+        const text = await response.text();
+        if (!text || !text.trim()) {
+          return {} as T;
+        }
+        try {
+          return JSON.parse(text) as T;
+        } catch (e) {
+          console.warn('Malformed JSON response received from API:', text);
+          return {} as T;
+        }
+      }
+
+      // If response is not JSON (e.g. plain text or SPA fallback)
+      const text = await response.text();
+      if (!text || text.includes('<!doctype') || text.includes('<html')) {
+        // SPA HTML fallback was returned (API endpoint not handled by server)
+        return {} as T;
+      }
+
+      try {
+        return JSON.parse(text) as T;
+      } catch {
+        return text as unknown as T;
+      }
     } catch (error) {
-      console.error('API Error:', error);
+      console.warn('API Request Warning / Handled Error:', error);
       throw error;
     }
   }

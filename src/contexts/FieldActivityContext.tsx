@@ -1,4 +1,6 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { sounds } from '../utils/sounds';
+import { useAuth } from './AuthContext';
 
 export type ActivityType =
   | 'STATUS_CHANGE'
@@ -26,8 +28,11 @@ export interface FieldActivity {
 
 interface FieldActivityContextType {
   activities: FieldActivity[];
+  latestIncomingActivity: FieldActivity | null;
+  clearLatestIncomingActivity: () => void;
   addActivity: (activity: Omit<FieldActivity, 'id' | 'timestamp' | 'acknowledged'>) => void;
   acknowledgeActivity: (id: number) => void;
+  resetToZeroState: () => void;
   getActivitiesByTourLeader: (tourLeaderId: number) => FieldActivity[];
   getActivitiesByBooking: (bookingId: number) => FieldActivity[];
   getUnacknowledgedCount: () => number;
@@ -95,8 +100,108 @@ const seedActivities: FieldActivity[] = [
   },
 ];
 
+const FIELD_ACTIVITY_STORAGE_KEY = 'paila_cms_field_activities';
+
 export function FieldActivityProvider({ children }: { children: ReactNode }) {
-  const [activities, setActivities] = useState<FieldActivity[]>(seedActivities);
+  const { user } = useAuth();
+  const [latestIncomingActivity, setLatestIncomingActivity] = useState<FieldActivity | null>(null);
+  const [activities, setActivities] = useState<FieldActivity[]>(() => {
+    try {
+      const saved = localStorage.getItem(FIELD_ACTIVITY_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {
+      // ignore
+    }
+    return seedActivities;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(FIELD_ACTIVITY_STORAGE_KEY, JSON.stringify(activities));
+    } catch {
+      // ignore
+    }
+  }, [activities]);
+
+  const clearLatestIncomingActivity = useCallback(() => {
+    setLatestIncomingActivity(null);
+  }, []);
+
+  useEffect(() => {
+    let channel: BroadcastChannel | null = null;
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        channel = new BroadcastChannel('paila_realtime_field_activities');
+        channel.onmessage = (event) => {
+          const data = event.data;
+          if (data?.type === 'NEW_FIELD_ACTIVITY' && data.activity) {
+            const incoming: FieldActivity = data.activity;
+            setActivities(prev => {
+              if (prev.some(a => a.id === incoming.id)) return prev;
+              return [incoming, ...prev];
+            });
+
+            if (user?.role !== 'TOUR_OPERATOR') {
+              sounds.notification();
+              setLatestIncomingActivity(incoming);
+            }
+          } else if (data?.type === 'ACK_FIELD_ACTIVITY' && data.id) {
+            setActivities(prev => prev.map(a => a.id === data.id ? { ...a, acknowledged: true } : a));
+          }
+        };
+      }
+    } catch (e) {
+      console.warn('FieldActivity BroadcastChannel error:', e);
+    }
+
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === FIELD_ACTIVITY_STORAGE_KEY && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) {
+            setActivities(prev => {
+              const prevIds = new Set(prev.map(a => a.id));
+              const newlyAdded = parsed.find((a: FieldActivity) => !prevIds.has(a.id) && !a.acknowledged);
+              if (newlyAdded && user?.role !== 'TOUR_OPERATOR') {
+                sounds.notification();
+                setLatestIncomingActivity(newlyAdded);
+              }
+              return parsed;
+            });
+          }
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    const handleCustomActivityEvent = (e: Event) => {
+      const customEvt = e as CustomEvent<FieldActivity>;
+      if (customEvt.detail) {
+        const incoming = customEvt.detail;
+        setActivities(prev => {
+          if (prev.some(a => a.id === incoming.id)) return prev;
+          return [incoming, ...prev];
+        });
+        if (user?.role !== 'TOUR_OPERATOR') {
+          sounds.notification();
+          setLatestIncomingActivity(incoming);
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('paila_field_activity_created' as any, handleCustomActivityEvent);
+
+    return () => {
+      if (channel) channel.close();
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('paila_field_activity_created' as any, handleCustomActivityEvent);
+    };
+  }, [user?.role]);
 
   const addActivity = (activity: Omit<FieldActivity, 'id' | 'timestamp' | 'acknowledged'>) => {
     const newActivity: FieldActivity = {
@@ -106,10 +211,47 @@ export function FieldActivityProvider({ children }: { children: ReactNode }) {
       acknowledged: false,
     };
     setActivities(prev => [newActivity, ...prev]);
+
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        const ch = new BroadcastChannel('paila_realtime_field_activities');
+        ch.postMessage({ type: 'NEW_FIELD_ACTIVITY', activity: newActivity });
+        setTimeout(() => ch.close(), 100);
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('paila_field_activity_created', { detail: newActivity }));
+      }
+    } catch {
+      // ignore
+    }
   };
 
   const acknowledgeActivity = (id: number) => {
     setActivities(prev => prev.map(a => a.id === id ? { ...a, acknowledged: true } : a));
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        const ch = new BroadcastChannel('paila_realtime_field_activities');
+        ch.postMessage({ type: 'ACK_FIELD_ACTIVITY', id });
+        setTimeout(() => ch.close(), 100);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const resetToZeroState = () => {
+    setActivities([]);
+    setLatestIncomingActivity(null);
+    try {
+      localStorage.setItem(FIELD_ACTIVITY_STORAGE_KEY, JSON.stringify([]));
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        const ch = new BroadcastChannel('paila_realtime_field_activities');
+        ch.postMessage({ type: 'RESET_FIELD_ACTIVITIES' });
+        setTimeout(() => ch.close(), 100);
+      }
+    } catch {
+      // ignore
+    }
   };
 
   const getActivitiesByTourLeader = (tourLeaderId: number) =>
@@ -124,8 +266,11 @@ export function FieldActivityProvider({ children }: { children: ReactNode }) {
   return (
     <FieldActivityContext.Provider value={{
       activities,
+      latestIncomingActivity,
+      clearLatestIncomingActivity,
       addActivity,
       acknowledgeActivity,
+      resetToZeroState,
       getActivitiesByTourLeader,
       getActivitiesByBooking,
       getUnacknowledgedCount,

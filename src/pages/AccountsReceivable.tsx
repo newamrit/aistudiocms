@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { bookings } from '../data/mockData';
 import { Search, Wallet, TrendingUp, CheckCircle, Clock, AlertTriangle, Plus, X, Users } from 'lucide-react';
 import { useBookings } from '../contexts/BookingContext';
 import { useActivities } from '../contexts/ActivityContext';
+import { SkeletonLoader } from '../components/common/SkeletonLoader';
+import { EmptyState } from '../components/common/EmptyState';
 import { sounds } from '../utils/sounds';
 
 export default function AccountsReceivable() {
-  const { bookings: allBookings, updateBooking } = useBookings();
+  const { bookings: allBookings, isLoading, updateBooking } = useBookings();
   const { logActivity } = useActivities();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -47,7 +48,6 @@ export default function AccountsReceivable() {
 
   const handleRecordPayment = () => {
     if (!selectedBookingId || !paymentAmount) {
-      alert('Please fill all required fields');
       return;
     }
 
@@ -81,7 +81,6 @@ export default function AccountsReceivable() {
     });
 
     sounds.cashRegister();
-    alert(`Payment of NPR ${amountNum.toLocaleString()} recorded successfully!`);
     setShowPaymentModal(false);
     setSelectedBookingId(null);
     setPaymentAmount('');
@@ -148,7 +147,7 @@ export default function AccountsReceivable() {
             </div>
             <span className="text-xs text-slate-500 font-medium">Collection Rate</span>
           </div>
-          <p className="text-2xl font-bold text-slate-900">{totalAgreed > 0 ? Math.round((totalReceived / totalAgreed) * 100) : 0}%</p>
+          <p className="text-2xl font-bold text-slate-900">{totalAgreed > 0 && Number.isFinite(totalReceived) && Number.isFinite(totalAgreed) ? String(Math.round((totalReceived / totalAgreed) * 100)) : '0'}%</p>
           <p className="text-xs text-slate-400 mt-1">of total billed</p>
         </div>
       </div>
@@ -180,86 +179,99 @@ export default function AccountsReceivable() {
       </div>
 
       {/* Bookings Table */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Booking</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Client</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Package</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Total Amount</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Received</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Balance</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Status</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filtered.map(booking => {
-                const balance = booking.totalAgreedAmount - booking.advanceReceived;
-                const status = getPaymentStatus(booking);
-                return (
-                  <tr key={booking.id} className="hover:bg-slate-50/50 transition-colors group">
-                    <td className="px-5 py-3.5">
-                      <span className="font-mono text-xs text-paila-blue font-medium">{booking.bookingCode}</span>
-                      <p className="text-[10px] text-slate-400 mt-0.5">{booking.startDate}</p>
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <p className="text-sm font-medium text-slate-900">{booking.clientName}</p>
-                      <p className="text-[10px] text-slate-500">{booking.clientPhone}</p>
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <p className="text-sm text-slate-700">{booking.packageName || 'Custom'}</p>
-                      <p className="text-[10px] text-slate-500 flex items-center gap-1 mt-0.5">
-                        <Users size={10} /> {booking.paxCount} pax
-                      </p>
-                    </td>
-                    <td className="px-5 py-3.5 text-sm font-medium text-slate-900">NPR {booking.totalAgreedAmount.toLocaleString()}</td>
-                    <td className="px-5 py-3.5 text-sm text-green-600 font-medium">NPR {booking.advanceReceived.toLocaleString()}</td>
-                    <td className="px-5 py-3.5">
-                      <span className={`text-sm font-bold ${balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                        NPR {balance.toLocaleString()}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <span className={`px-2.5 py-1 text-[10px] font-semibold rounded-full ${
-                        status === 'SETTLED' ? 'bg-green-100 text-green-700' :
-                        status === 'PARTIALLY_PAID' ? 'bg-amber-100 text-amber-700' :
-                        'bg-red-100 text-red-700'
-                      }`}>
-                        {status.replace('_', ' ')}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3.5">
-                      {balance > 0 && (
-                        <button
-                          onClick={() => {
-                            setSelectedBookingId(booking.id);
-                            setShowPaymentModal(true);
-                          }}
-                          className="text-xs text-paila-blue font-medium hover:text-paila-orange transition-colors opacity-0 group-hover:opacity-100"
-                        >
-                          + Record Payment
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr className="bg-slate-50 border-t-2 border-slate-200">
-                <td colSpan={3} className="px-5 py-3 text-sm font-semibold text-slate-700">TOTALS</td>
-                <td className="px-5 py-3 text-sm font-bold text-slate-900">NPR {filtered.reduce((s, b) => s + b.totalAgreedAmount, 0).toLocaleString()}</td>
-                <td className="px-5 py-3 text-sm font-bold text-green-700">NPR {filtered.reduce((s, b) => s + b.advanceReceived, 0).toLocaleString()}</td>
-                <td className="px-5 py-3 text-sm font-bold text-red-600">NPR {filtered.reduce((s, b) => s + (b.totalAgreedAmount - b.advanceReceived), 0).toLocaleString()}</td>
-                <td colSpan={2}></td>
-              </tr>
-            </tfoot>
-          </table>
+      {isLoading ? (
+        <SkeletonLoader type="table" rows={5} />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          title={allBookings.length === 0 ? "No Client Bookings in Database" : "No Bookings Found"}
+          description={
+            allBookings.length === 0
+              ? "No client bookings exist in your system yet. Accounts receivable records will populate as bookings are created."
+              : "No client accounts match your search filter."
+          }
+        />
+      ) : (
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200">
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Booking</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Client</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Package</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Total Amount</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Received</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Balance</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Status</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filtered.map(booking => {
+                  const balance = booking.totalAgreedAmount - booking.advanceReceived;
+                  const status = getPaymentStatus(booking);
+                  return (
+                    <tr key={booking.id} className="hover:bg-slate-50/50 transition-colors group">
+                      <td className="px-5 py-3.5">
+                        <span className="font-mono text-xs text-paila-blue font-medium">{booking.bookingCode}</span>
+                        <p className="text-[10px] text-slate-400 mt-0.5">{booking.startDate}</p>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <p className="text-sm font-medium text-slate-900">{booking.clientName}</p>
+                        <p className="text-[10px] text-slate-500">{booking.clientPhone}</p>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <p className="text-sm text-slate-700">{booking.packageName || 'Custom'}</p>
+                        <p className="text-[10px] text-slate-500 flex items-center gap-1 mt-0.5">
+                          <Users size={10} /> {booking.paxCount} pax
+                        </p>
+                      </td>
+                      <td className="px-5 py-3.5 text-sm font-medium text-slate-900">NPR {booking.totalAgreedAmount.toLocaleString()}</td>
+                      <td className="px-5 py-3.5 text-sm text-green-600 font-medium">NPR {booking.advanceReceived.toLocaleString()}</td>
+                      <td className="px-5 py-3.5">
+                        <span className={`text-sm font-bold ${balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                          NPR {balance.toLocaleString()}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span className={`px-2.5 py-1 text-[10px] font-semibold rounded-full ${
+                          status === 'SETTLED' ? 'bg-green-100 text-green-700' :
+                          status === 'PARTIALLY_PAID' ? 'bg-amber-100 text-amber-700' :
+                          'bg-red-100 text-red-700'
+                        }`}>
+                          {status.replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        {balance > 0 && (
+                          <button
+                            onClick={() => {
+                              setSelectedBookingId(booking.id);
+                              setShowPaymentModal(true);
+                            }}
+                            className="text-xs text-paila-blue font-medium hover:text-paila-orange transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
+                          >
+                            + Record Payment
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="bg-slate-50 border-t-2 border-slate-200">
+                  <td colSpan={3} className="px-5 py-3 text-sm font-semibold text-slate-700">TOTALS</td>
+                  <td className="px-5 py-3 text-sm font-bold text-slate-900">NPR {filtered.reduce((s, b) => s + b.totalAgreedAmount, 0).toLocaleString()}</td>
+                  <td className="px-5 py-3 text-sm font-bold text-green-700">NPR {filtered.reduce((s, b) => s + b.advanceReceived, 0).toLocaleString()}</td>
+                  <td className="px-5 py-3 text-sm font-bold text-red-600">NPR {filtered.reduce((s, b) => s + (b.totalAgreedAmount - b.advanceReceived), 0).toLocaleString()}</td>
+                  <td colSpan={2}></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Payment Modal */}
       {showPaymentModal && (

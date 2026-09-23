@@ -3,6 +3,10 @@ import ReactDOM from "react-dom/client";
 import "./index.css";
 import App from "./App.tsx";
 import { initializeOfflineSupport } from "./utils/offlineDB";
+import { initializeProductionDatabase } from "./utils/databaseBootstrap";
+
+// Bootstrap production database if empty
+initializeProductionDatabase();
 
 // Initialize offline support
 initializeOfflineSupport().then(() => {

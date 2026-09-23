@@ -1,11 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Activity, ActivityCategory, ActivityType } from '../types';
+import { apiClient } from '../api/apiClient';
 
 interface ActivityContextType {
   activities: Activity[];
   logActivity: (activity: Omit<Activity, 'id' | 'timestamp'> & { timestamp?: string }) => void;
   clearActivities: () => void;
+  resetToZeroState: () => void;
   getActivitiesByCategory: (category: ActivityCategory) => Activity[];
+  setAllActivities: (newActivities: Activity[]) => void;
   unreadCount?: number;
 }
 
@@ -184,6 +187,22 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
     return initialSeedActivities;
   });
 
+  // Hydrate activities from MySQL database on mount
+  useEffect(() => {
+    let isMounted = true;
+    apiClient.activities.getAll().then(dbActivities => {
+      if (isMounted && Array.isArray(dbActivities) && dbActivities.length > 0) {
+        setActivities(dbActivities);
+      }
+    }).catch(err => {
+      console.warn('Failed to fetch activities from database:', err);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(activities));
@@ -191,6 +210,46 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
       // ignore
     }
   }, [activities]);
+
+  // Real-time broadcast and cross-tab synchronization
+  useEffect(() => {
+    let channel: BroadcastChannel | null = null;
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        channel = new BroadcastChannel('paila_realtime_audit_activities');
+        channel.onmessage = (event) => {
+          const data = event.data;
+          if (data?.type === 'NEW_AUDIT_ACTIVITY' && data.activity) {
+            setActivities(prev => {
+              if (prev.some(a => a.id === data.activity.id)) return prev;
+              return [data.activity, ...prev.slice(0, 99)];
+            });
+          }
+        };
+      }
+    } catch (e) {
+      console.warn('Activity BroadcastChannel error:', e);
+    }
+
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEY && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) {
+            setActivities(parsed);
+          }
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      if (channel) channel.close();
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
 
   const logActivity = (newActivityData: Omit<Activity, 'id' | 'timestamp'> & { timestamp?: string }) => {
     const id = `act-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
@@ -201,10 +260,48 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
     };
 
     setActivities(prev => [newEntry, ...prev.slice(0, 99)]); // Keep last 100 activities
+
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        const ch = new BroadcastChannel('paila_realtime_audit_activities');
+        ch.postMessage({ type: 'NEW_AUDIT_ACTIVITY', activity: newEntry });
+        setTimeout(() => ch.close(), 100);
+      }
+    } catch {
+      // ignore
+    }
+
+    // Persist to MySQL database in background
+    apiClient.activities.log(newEntry).catch(err => {
+      console.warn('Failed to sync activity to MySQL database:', err);
+    });
   };
 
   const clearActivities = () => {
     setActivities(initialSeedActivities);
+  };
+
+  const resetToZeroState = () => {
+    setActivities([]);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        const ch = new BroadcastChannel('paila_realtime_audit_activities');
+        ch.postMessage({ type: 'RESET_ACTIVITIES' });
+        setTimeout(() => ch.close(), 100);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const setAllActivities = (newActivities: Activity[]) => {
+    setActivities(newActivities);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newActivities));
+    } catch {
+      // ignore
+    }
   };
 
   const getActivitiesByCategory = (category: ActivityCategory) => {
@@ -217,7 +314,9 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
         activities,
         logActivity,
         clearActivities,
+        resetToZeroState,
         getActivitiesByCategory,
+        setAllActivities,
       }}
     >
       {children}

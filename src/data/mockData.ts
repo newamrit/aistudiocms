@@ -1,11 +1,11 @@
 import { User, Package, Booking, Vendor, OperationAllocation, VendorPayment } from '../types';
 
 export const users: User[] = [
-  { id: 1, name: 'Rajesh Shrestha', email: 'admin@pailanepal.com', role: 'SUPER_ADMIN', phone: '+977-9841234567', isActive: true },
-  { id: 2, name: 'Sita Maharjan', email: 'sales@pailanepal.com', role: 'SALES', phone: '+977-9851234567', isActive: true },
-  { id: 3, name: 'Bikash Tamang', email: 'ops@pailanepal.com', role: 'OPERATIONS', phone: '+977-9861234567', isActive: true },
-  { id: 4, name: 'Prakash Gurung', email: 'tour@pailanepal.com', role: 'TOUR_OPERATOR', phone: '+977-9871234567', isActive: true },
-  { id: 5, name: 'Anita Rai', email: 'anita@pailanepal.com', role: 'SALES', phone: '+977-9881234567', isActive: true },
+  { id: 1, name: 'Rajesh Shrestha', email: 'admin@pailanepal.com', password: 'password', role: 'SUPER_ADMIN', phone: '+977-9841234567', isActive: true },
+  { id: 2, name: 'Sita Maharjan', email: 'sales@pailanepal.com', password: 'password', role: 'SALES', phone: '+977-9851234567', isActive: true },
+  { id: 3, name: 'Bikash Tamang', email: 'ops@pailanepal.com', password: 'password', role: 'OPERATIONS', phone: '+977-9861234567', isActive: true },
+  { id: 4, name: 'Prakash Gurung', email: 'tour@pailanepal.com', password: 'password', role: 'TOUR_OPERATOR', phone: '+977-9871234567', isActive: true },
+  { id: 5, name: 'Anita Rai', email: 'anita@pailanepal.com', password: 'password', role: 'SALES', phone: '+977-9881234567', isActive: true },
 ];
 
 export const packages: Package[] = [
@@ -66,9 +66,45 @@ export const bookings: Booking[] = [
     packageId: 2, packageName: 'Pokhara Student Excursion', status: 'CONFIRMED',
     startDate: '2026-02-15', endDate: '2026-02-18', paxCount: 45,
     totalAgreedAmount: 382500, advanceReceived: 150000,
-    assignedTourOperatorId: 4, assignedTourOperatorName: 'Prakash Gurung',
+    assignedTourOperatorId: null,
     notes: 'College educational tour. Need vegetarian meal options for 10 students.',
     createdBy: 2, createdByName: 'Sita Maharjan', createdAt: '2026-01-10',
+    statusHistory: [
+      {
+        id: 'sh-1-1',
+        bookingId: 1,
+        bookingCode: 'PNH-2026-001',
+        fromStatus: null,
+        toStatus: 'PROPOSED',
+        changedAt: '2026-01-10T09:30:00.000Z',
+        changedBy: {
+          id: 2,
+          name: 'Sita Maharjan',
+          role: 'SALES',
+          email: 'sales@pailanepal.com'
+        },
+        reason: 'Quotation and package proposal drafted for St. Xavier\'s College.',
+        notes: 'Requested 45 student slots for Pokhara Excursion.',
+        source: 'ADMIN_PORTAL'
+      },
+      {
+        id: 'sh-1-2',
+        bookingId: 1,
+        bookingCode: 'PNH-2026-001',
+        fromStatus: 'PROPOSED',
+        toStatus: 'CONFIRMED',
+        changedAt: '2026-01-15T14:20:00.000Z',
+        changedBy: {
+          id: 1,
+          name: 'Rajesh Shrestha',
+          role: 'SUPER_ADMIN',
+          email: 'admin@pailanepal.com'
+        },
+        reason: 'Advance deposit of NPR 150,000 received and verified via Nabil Bank transfer.',
+        notes: 'Hotel Lake Star and Sajha Yatayat bus allocated.',
+        source: 'ADMIN_PORTAL'
+      }
+    ],
     itineraryDays: [
       { id: 1, dayNumber: 1, title: 'Drive to Pokhara', description: 'Early morning departure from Kathmandu. Scenic drive via Mugling. Lunch at highway restaurant. Arrive Pokhara by afternoon. Check-in hotel.', overnightLocation: 'Hotel Lake Star, Lakeside', mealsIncluded: 'L, D' },
       { id: 2, dayNumber: 2, title: 'Sarangkot Sunrise & Lakeside Exploration', description: 'Early morning drive to Sarangkot for sunrise view. Return to hotel for breakfast. Visit Davis Falls, Gupteshwor Cave. Afternoon boating on Phewa Lake.', overnightLocation: 'Hotel Lake Star, Lakeside', mealsIncluded: 'B, L, D' },
@@ -85,6 +121,42 @@ export const bookings: Booking[] = [
     assignedTourOperatorId: 4, assignedTourOperatorName: 'Prakash Gurung',
     notes: 'Foreign trekkers. All permits arranged. Acclimatization day at Machhapuchhre BC.',
     createdBy: 2, createdByName: 'Sita Maharjan', createdAt: '2025-12-15',
+    statusHistory: [
+      {
+        id: 'sh-2-1',
+        bookingId: 2,
+        bookingCode: 'PNH-2026-002',
+        fromStatus: null,
+        toStatus: 'PROPOSED',
+        changedAt: '2025-12-15T11:00:00.000Z',
+        changedBy: { id: 2, name: 'Sita Maharjan', role: 'SALES', email: 'sales@pailanepal.com' },
+        reason: 'Initial trek proposal sent to Hans Mueller (Germany).',
+        source: 'ADMIN_PORTAL'
+      },
+      {
+        id: 'sh-2-2',
+        bookingId: 2,
+        bookingCode: 'PNH-2026-002',
+        fromStatus: 'PROPOSED',
+        toStatus: 'CONFIRMED',
+        changedAt: '2025-12-28T16:45:00.000Z',
+        changedBy: { id: 1, name: 'Rajesh Shrestha', role: 'SUPER_ADMIN', email: 'admin@pailanepal.com' },
+        reason: 'Full 100% advance (NPR 180,000) received via SWIFT wire transfer. TIMS and ACAP permits processed.',
+        source: 'ADMIN_PORTAL'
+      },
+      {
+        id: 'sh-2-3',
+        bookingId: 2,
+        bookingCode: 'PNH-2026-002',
+        fromStatus: 'CONFIRMED',
+        toStatus: 'IN_PROGRESS',
+        changedAt: '2026-01-20T06:30:00.000Z',
+        changedBy: { id: 4, name: 'Prakash Gurung', role: 'TOUR_OPERATOR', email: 'tour@pailanepal.com' },
+        reason: 'Tour group departed Kathmandu via Himalayan Jeep Service to Nayapul trailhead.',
+        notes: 'Lead guide Prakash Gurung on duty with 4 foreign trekkers.',
+        source: 'FIELD_APP'
+      }
+    ],
     itineraryDays: [
       { id: 5, dayNumber: 1, title: 'Drive to Nayapul & Trek to Tikhedhunga', description: 'Early drive to Nayapul. Start trek through sub-tropical forest.', overnightLocation: 'Tikhedhunga Teahouse', mealsIncluded: 'B, L, D' },
       { id: 6, dayNumber: 2, title: 'Trek to Ghorepani via Ulleri', description: 'Steep climb up Ulleri stone steps. Reach Ghorepani through rhododendron forest.', overnightLocation: 'Ghorepani Teahouse', mealsIncluded: 'B, L, D' },
@@ -100,6 +172,20 @@ export const bookings: Booking[] = [
     assignedTourOperatorId: null,
     notes: 'Corporate team building event. Need conference room for 1 evening session.',
     createdBy: 5, createdByName: 'Anita Rai', createdAt: '2026-01-20',
+    statusHistory: [
+      {
+        id: 'sh-3-1',
+        bookingId: 3,
+        bookingCode: 'PNH-2026-003',
+        fromStatus: null,
+        toStatus: 'PROPOSED',
+        changedAt: '2026-01-20T10:15:00.000Z',
+        changedBy: { id: 5, name: 'Anita Rai', role: 'SALES', email: 'anita@pailanepal.com' },
+        reason: 'Corporate proposal submitted to HR Department of Nabil Bank Ltd.',
+        notes: 'Awaiting board approval for budget release of NPR 300,000.',
+        source: 'ADMIN_PORTAL'
+      }
+    ],
     itineraryDays: [
       { id: 8, dayNumber: 1, title: 'Drive to Chitwan', description: 'Morning departure by AC bus. Arrive Sauraha by afternoon. Check-in resort. Welcome drink & briefing.', overnightLocation: 'Green Park Resort, Sauraha', mealsIncluded: 'L, D' },
       { id: 9, dayNumber: 2, title: 'Full Day Jungle Activities', description: 'Morning elephant ride. Canoe ride on Rapti River. Afternoon jungle walk. Evening Tharu cultural dance.', overnightLocation: 'Green Park Resort, Sauraha', mealsIncluded: 'B, L, D' },
@@ -112,9 +198,55 @@ export const bookings: Booking[] = [
     packageId: 6, packageName: 'Kathmandu Heritage Tour', status: 'COMPLETED',
     startDate: '2026-01-05', endDate: '2026-01-06', paxCount: 60,
     totalAgreedAmount: 300000, advanceReceived: 300000,
-    assignedTourOperatorId: 4, assignedTourOperatorName: 'Prakash Gurung',
+    assignedTourOperatorId: null,
     notes: 'School heritage tour completed successfully.',
     createdBy: 2, createdByName: 'Sita Maharjan', createdAt: '2025-12-20',
+    statusHistory: [
+      {
+        id: 'sh-4-1',
+        bookingId: 4,
+        bookingCode: 'PNH-2026-004',
+        fromStatus: null,
+        toStatus: 'PROPOSED',
+        changedAt: '2025-12-20T08:00:00.000Z',
+        changedBy: { id: 2, name: 'Sita Maharjan', role: 'SALES', email: 'sales@pailanepal.com' },
+        reason: 'Initial quotation created for 60 students heritage excursion.',
+        source: 'ADMIN_PORTAL'
+      },
+      {
+        id: 'sh-4-2',
+        bookingId: 4,
+        bookingCode: 'PNH-2026-004',
+        fromStatus: 'PROPOSED',
+        toStatus: 'CONFIRMED',
+        changedAt: '2025-12-29T11:30:00.000Z',
+        changedBy: { id: 1, name: 'Rajesh Shrestha', role: 'SUPER_ADMIN', email: 'admin@pailanepal.com' },
+        reason: 'Full institutional payment received and bus allocated.',
+        source: 'ADMIN_PORTAL'
+      },
+      {
+        id: 'sh-4-3',
+        bookingId: 4,
+        bookingCode: 'PNH-2026-004',
+        fromStatus: 'CONFIRMED',
+        toStatus: 'IN_PROGRESS',
+        changedAt: '2026-01-05T07:00:00.000Z',
+        changedBy: { id: 3, name: 'Bikash Tamang', role: 'OPERATIONS', email: 'ops@pailanepal.com' },
+        reason: 'Students boarded Sajha Yatayat bus at school campus.',
+        source: 'OPERATIONS'
+      },
+      {
+        id: 'sh-4-4',
+        bookingId: 4,
+        bookingCode: 'PNH-2026-004',
+        fromStatus: 'IN_PROGRESS',
+        toStatus: 'COMPLETED',
+        changedAt: '2026-01-06T18:00:00.000Z',
+        changedBy: { id: 1, name: 'Rajesh Shrestha', role: 'SUPER_ADMIN', email: 'admin@pailanepal.com' },
+        reason: 'Tour concluded with all students safely returned. Vendor accounts fully settled.',
+        source: 'ADMIN_PORTAL'
+      }
+    ],
     itineraryDays: [
       { id: 11, dayNumber: 1, title: 'Heritage Sites Day 1', description: 'Visit Pashupatinath, Boudhanath, and Swayambhunath.', overnightLocation: 'N/A (Day return)', mealsIncluded: 'L' },
       { id: 12, dayNumber: 2, title: 'Heritage Sites Day 2', description: 'Visit Patan Durbar Square and Bhaktapur Durbar Square.', overnightLocation: '', mealsIncluded: 'L' },
@@ -126,9 +258,33 @@ export const bookings: Booking[] = [
     packageId: 5, packageName: 'Langtang Valley Trek', status: 'CONFIRMED',
     startDate: '2026-02-20', endDate: '2026-02-26', paxCount: 6,
     totalAgreedAmount: 195000, advanceReceived: 80000,
-    assignedTourOperatorId: 4, assignedTourOperatorName: 'Prakash Gurung',
+    assignedTourOperatorId: null,
     notes: 'Family group with 2 children (ages 12 and 14). Moderate pace required.',
     createdBy: 5, createdByName: 'Anita Rai', createdAt: '2026-01-15',
+    statusHistory: [
+      {
+        id: 'sh-5-1',
+        bookingId: 5,
+        bookingCode: 'PNH-2026-005',
+        fromStatus: null,
+        toStatus: 'PROPOSED',
+        changedAt: '2026-01-15T15:00:00.000Z',
+        changedBy: { id: 5, name: 'Anita Rai', role: 'SALES', email: 'anita@pailanepal.com' },
+        reason: 'Family trek package tailored with customized rest stops.',
+        source: 'ADMIN_PORTAL'
+      },
+      {
+        id: 'sh-5-2',
+        bookingId: 5,
+        bookingCode: 'PNH-2026-005',
+        fromStatus: 'PROPOSED',
+        toStatus: 'CONFIRMED',
+        changedAt: '2026-01-22T09:40:00.000Z',
+        changedBy: { id: 1, name: 'Rajesh Shrestha', role: 'SUPER_ADMIN', email: 'admin@pailanepal.com' },
+        reason: 'Deposit of NPR 80,000 received via eSewa. Jeep transfer reserved.',
+        source: 'ADMIN_PORTAL'
+      }
+    ],
     itineraryDays: [
       { id: 13, dayNumber: 1, title: 'Drive to Syabrubesi', description: 'Scenic drive from Kathmandu to Syabrubesi (1,460m).', overnightLocation: 'Syabrubesi Lodge', mealsIncluded: 'L, D' },
       { id: 14, dayNumber: 2, title: 'Trek to Lama Hotel', description: 'Trek through bamboo forest along Langtang river.', overnightLocation: 'Lama Hotel', mealsIncluded: 'B, L, D' },

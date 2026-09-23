@@ -1,5 +1,7 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { useAuth } from './AuthContext';
+import { apiClient, DB_KEYS } from '../api/apiClient';
+import { sounds } from '../utils/sounds';
 
 export interface Alert {
   id: number;
@@ -12,7 +14,10 @@ export interface Alert {
   location: string | null;
   status: 'PENDING' | 'ACKNOWLEDGED' | 'RESOLVED';
   acknowledged_by: number | null;
+  acknowledged_by_name?: string | null;
   acknowledged_at: string | null;
+  resolved_at?: string | null;
+  resolved_by_name?: string | null;
   created_at: string;
   tour_leader_name?: string;
   tour_leader_phone?: string;
@@ -24,14 +29,20 @@ interface AlertContextType {
   alerts: Alert[];
   unreadCount: number;
   loading: boolean;
+  latestIncomingAlert: Alert | null;
+  clearLatestIncomingAlert: () => void;
   createAlert: (alert: Omit<Alert, 'id' | 'status' | 'acknowledged_by' | 'acknowledged_at' | 'created_at'>) => Promise<number>;
   acknowledgeAlert: (alertId: number) => Promise<void>;
+  resolveAlert: (alertId: number) => Promise<void>;
   refreshAlerts: () => Promise<void>;
+  setAllAlerts: (newAlerts: Alert[]) => void;
+  resetToZeroState: () => void;
 }
 
 const AlertContext = createContext<AlertContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'paila_nepal_alerts';
+const STORAGE_KEY = DB_KEYS.ALERTS || 'paila_cms_alerts';
+const LEGACY_STORAGE_KEY = 'paila_nepal_alerts';
 
 const defaultSeedAlerts: Alert[] = [
   {
@@ -93,11 +104,15 @@ const defaultSeedAlerts: Alert[] = [
 export function AlertProvider({ children }: { children: ReactNode }) {
   const [alerts, setAlerts] = useState<Alert[]>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          const map = new Map<number, Alert>();
+          for (const item of parsed) {
+            if (item && item.id) map.set(item.id, item);
+          }
+          return Array.from(map.values());
         }
       }
     } catch {
@@ -107,116 +122,282 @@ export function AlertProvider({ children }: { children: ReactNode }) {
   });
 
   const [loading, setLoading] = useState(false);
+  const [latestIncomingAlert, setLatestIncomingAlert] = useState<Alert | null>(null);
   const { user } = useAuth();
+  const alertsRef = useRef<Alert[]>(alerts);
+  alertsRef.current = alerts;
 
-  // Save to localStorage whenever alerts change
+  // Sync to local storage
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(alerts));
+      const serialized = JSON.stringify(alerts);
+      localStorage.setItem(STORAGE_KEY, serialized);
+      localStorage.setItem(LEGACY_STORAGE_KEY, serialized);
     } catch {
       // ignore
     }
   }, [alerts]);
 
-  const fetchAlerts = async () => {
+  const clearLatestIncomingAlert = useCallback(() => {
+    setLatestIncomingAlert(null);
+  }, []);
+
+  const fetchAlerts = useCallback(async (showLoadingSpinner = false) => {
     try {
-      setLoading(true);
-      // If a custom API base URL is specified and not the local SPA, attempt fetch
-      const apiUrl = (import.meta as any).env?.VITE_API_URL;
-      if (apiUrl) {
-        const response = await fetch(`${apiUrl}/alerts`, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-        });
-        if (response.ok) {
-          const contentType = response.headers.get('content-type');
-          if (contentType && contentType.includes('application/json')) {
-            const data = await response.json();
-            if (data?.success && Array.isArray(data?.data)) {
-              setAlerts(data.data);
-              return;
-            }
+      if (showLoadingSpinner) setLoading(true);
+      const dbAlerts = await apiClient.alerts.getAll();
+      if (Array.isArray(dbAlerts) && dbAlerts.length > 0) {
+        setAlerts(prev => {
+          // Check for any newly added pending alerts
+          const prevIds = new Set(prev.map(a => a.id));
+          const newPending = dbAlerts.find(a => !prevIds.has(a.id) && a.status === 'PENDING');
+          if (newPending && user?.role !== 'TOUR_OPERATOR') {
+            sounds.warning();
+            setLatestIncomingAlert(newPending);
           }
-        }
+          return dbAlerts;
+        });
       }
     } catch (error) {
-      console.warn('API sync bypassed, using local alerts cache:', error);
+      console.warn('Alerts API sync fallback to local cache:', error);
     } finally {
-      setLoading(false);
+      if (showLoadingSpinner) setLoading(false);
+    }
+  }, [user?.role]);
+
+  // Real-time broadcast and cross-tab/same-tab listener
+  useEffect(() => {
+    fetchAlerts(true);
+
+    let channel: BroadcastChannel | null = null;
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        channel = new BroadcastChannel('paila_realtime_alerts_channel');
+        channel.onmessage = (event) => {
+          const data = event.data;
+          if (data?.type === 'NEW_ALERT' && data.alert) {
+            const newAlert: Alert = data.alert;
+            setAlerts(prev => {
+              if (prev.some(a => a.id === newAlert.id)) return prev;
+              return [newAlert, ...prev];
+            });
+            if (user?.role !== 'TOUR_OPERATOR') {
+              sounds.warning();
+              setLatestIncomingAlert(newAlert);
+            }
+          } else if (data?.type === 'UPDATE_ALERT' && data.alert) {
+            const updated: Alert = data.alert;
+            setAlerts(prev => prev.map(a => a.id === updated.id ? updated : a));
+          } else if (data?.type === 'REFRESH_ALERTS') {
+            fetchAlerts(false);
+          }
+        };
+      }
+    } catch (e) {
+      console.warn('BroadcastChannel error:', e);
+    }
+
+    // Cross-tab storage event listener
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEY || e.key === LEGACY_STORAGE_KEY) {
+        try {
+          if (e.newValue) {
+            const parsed = JSON.parse(e.newValue);
+            if (Array.isArray(parsed)) {
+              setAlerts(prev => {
+                const prevIds = new Set(prev.map(a => a.id));
+                const newlyAdded = parsed.find((a: Alert) => !prevIds.has(a.id) && a.status === 'PENDING');
+                if (newlyAdded && user?.role !== 'TOUR_OPERATOR') {
+                  sounds.warning();
+                  setLatestIncomingAlert(newlyAdded);
+                }
+                return parsed;
+              });
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    // Same-window custom event listener
+    const handleCustomEvent = (e: Event) => {
+      const customEvt = e as CustomEvent<Alert>;
+      if (customEvt.detail) {
+        const newAlert = customEvt.detail;
+        setAlerts(prev => {
+          if (prev.some(a => a.id === newAlert.id)) return prev;
+          return [newAlert, ...prev];
+        });
+        if (user?.role !== 'TOUR_OPERATOR') {
+          sounds.warning();
+          setLatestIncomingAlert(newAlert);
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('paila_alert_created' as any, handleCustomEvent);
+
+    // Live background polling every 2.5s for near-instant synchronization
+    const pollInterval = setInterval(() => {
+      fetchAlerts(false);
+    }, 2500);
+
+    return () => {
+      if (channel) {
+        channel.close();
+      }
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('paila_alert_created' as any, handleCustomEvent);
+      clearInterval(pollInterval);
+    };
+  }, [fetchAlerts, user?.role]);
+
+  const broadcastAlertEvent = (type: 'NEW_ALERT' | 'UPDATE_ALERT' | 'REFRESH_ALERTS', alert?: Alert) => {
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        const ch = new BroadcastChannel('paila_realtime_alerts_channel');
+        ch.postMessage({ type, alert });
+        setTimeout(() => ch.close(), 100);
+      }
+    } catch (e) {
+      // ignore
     }
   };
 
   const createAlert = async (alertData: Omit<Alert, 'id' | 'status' | 'acknowledged_by' | 'acknowledged_at' | 'created_at'>): Promise<number> => {
-    const newId = Date.now();
-    const newAlert: Alert = {
-      ...alertData,
-      id: newId,
-      status: 'PENDING',
-      acknowledged_by: null,
-      acknowledged_at: null,
-      created_at: new Date().toISOString(),
-      tour_leader_name: alertData.tour_leader_name || user?.name || 'Tour Leader',
-      tour_leader_phone: alertData.tour_leader_phone || user?.phone || '+977-9841000000',
-      booking_code: alertData.booking_code || (alertData.booking_id ? `PNH-2026-00${alertData.booking_id}` : undefined),
-    };
+    try {
+      const created = await apiClient.alerts.create({
+        ...alertData,
+        tour_leader_name: alertData.tour_leader_name || user?.name || 'Tour Leader',
+        tour_leader_phone: alertData.tour_leader_phone || user?.phone || '+977-9841000000',
+        booking_code: alertData.booking_code || (alertData.booking_id ? `PNH-2026-00${alertData.booking_id}` : undefined),
+      });
 
-    setAlerts(prev => [newAlert, ...prev]);
-
-    // Optional background sync if API exists
-    const apiUrl = (import.meta as any).env?.VITE_API_URL;
-    if (apiUrl) {
-      try {
-        await fetch(`${apiUrl}/alerts`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newAlert),
-        });
-      } catch {
-        // Safe to ignore in offline / local-first mode
+      setAlerts(prev => [created, ...prev.filter(a => a.id !== created.id)]);
+      
+      // Broadcast in real-time across tabs & window
+      broadcastAlertEvent('NEW_ALERT', created);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('paila_alert_created', { detail: created }));
       }
-    }
 
-    return newId;
+      return created.id;
+    } catch (err) {
+      console.error('Failed to create alert in database:', err);
+      const fallbackId = Date.now();
+      const fallbackAlert: Alert = {
+        ...alertData,
+        id: fallbackId,
+        status: 'PENDING',
+        acknowledged_by: null,
+        acknowledged_at: null,
+        created_at: new Date().toISOString(),
+        tour_leader_name: alertData.tour_leader_name || user?.name || 'Tour Leader',
+        tour_leader_phone: alertData.tour_leader_phone || user?.phone || '+977-9841000000',
+        booking_code: alertData.booking_code || (alertData.booking_id ? `PNH-2026-00${alertData.booking_id}` : undefined),
+      };
+      
+      setAlerts(prev => [fallbackAlert, ...prev]);
+      
+      broadcastAlertEvent('NEW_ALERT', fallbackAlert);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('paila_alert_created', { detail: fallbackAlert }));
+      }
+
+      return fallbackId;
+    }
   };
 
   const acknowledgeAlert = async (alertId: number) => {
     const acknowledgedAt = new Date().toISOString();
     const acknowledgedBy = user?.id || 1;
+    const acknowledgedByName = user?.name || (user?.role === 'SUPER_ADMIN' ? 'Rajesh Shrestha (Admin)' : 'Operations Team');
 
+    let updatedAlert: Alert | null = null;
     setAlerts(prev =>
-      prev.map(alert =>
-        alert.id === alertId
-          ? {
-              ...alert,
-              status: 'ACKNOWLEDGED',
-              acknowledged_by: acknowledgedBy,
-              acknowledged_at: acknowledgedAt,
-            }
-          : alert
-      )
+      prev.map(alert => {
+        if (alert.id === alertId) {
+          updatedAlert = {
+            ...alert,
+            status: 'ACKNOWLEDGED',
+            acknowledged_by: acknowledgedBy,
+            acknowledged_by_name: acknowledgedByName,
+            acknowledged_at: acknowledgedAt,
+          };
+          return updatedAlert;
+        }
+        return alert;
+      })
     );
 
-    // Optional background sync
-    const apiUrl = (import.meta as any).env?.VITE_API_URL;
-    if (apiUrl) {
-      try {
-        await fetch(`${apiUrl}/alerts`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            alert_id: alertId,
-            acknowledged_by: acknowledgedBy,
-          }),
-        });
-      } catch {
-        // Safe to ignore
-      }
+    if (updatedAlert) {
+      broadcastAlertEvent('UPDATE_ALERT', updatedAlert);
+    }
+
+    try {
+      await apiClient.alerts.acknowledge(alertId);
+    } catch (err) {
+      console.warn(`Failed to sync alert #${alertId} acknowledgement to database:`, err);
     }
   };
 
-  useEffect(() => {
-    fetchAlerts();
-  }, []);
+  const resolveAlert = async (alertId: number) => {
+    const resolvedAt = new Date().toISOString();
+    const resolvedByName = user?.name || (user?.role === 'SUPER_ADMIN' ? 'Rajesh Shrestha (Admin)' : 'Operations Team');
+
+    let updatedAlert: Alert | null = null;
+    setAlerts(prev =>
+      prev.map(alert => {
+        if (alert.id === alertId) {
+          updatedAlert = {
+            ...alert,
+            status: 'RESOLVED',
+            resolved_at: resolvedAt,
+            resolved_by_name: resolvedByName,
+          };
+          return updatedAlert;
+        }
+        return alert;
+      })
+    );
+
+    if (updatedAlert) {
+      broadcastAlertEvent('UPDATE_ALERT', updatedAlert);
+    }
+
+    try {
+      await apiClient.alerts.resolve(alertId);
+    } catch (err) {
+      console.warn(`Failed to sync alert #${alertId} resolution to database:`, err);
+    }
+  };
+
+  const setAllAlerts = (newAlerts: Alert[]) => {
+    setAlerts(newAlerts);
+    try {
+      const serialized = JSON.stringify(newAlerts);
+      localStorage.setItem(STORAGE_KEY, serialized);
+      localStorage.setItem(LEGACY_STORAGE_KEY, serialized);
+      broadcastAlertEvent('REFRESH_ALERTS');
+    } catch {
+      // ignore
+    }
+  };
+
+  const resetToZeroState = () => {
+    setAlerts([]);
+    setLatestIncomingAlert(null);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
+      localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify([]));
+      broadcastAlertEvent('REFRESH_ALERTS');
+    } catch {
+      // ignore
+    }
+  };
 
   const unreadCount = alerts.filter(alert => alert.status === 'PENDING').length;
 
@@ -226,9 +407,14 @@ export function AlertProvider({ children }: { children: ReactNode }) {
         alerts,
         unreadCount,
         loading,
+        latestIncomingAlert,
+        clearLatestIncomingAlert,
         createAlert,
         acknowledgeAlert,
-        refreshAlerts: fetchAlerts,
+        resolveAlert,
+        refreshAlerts: () => fetchAlerts(false),
+        setAllAlerts,
+        resetToZeroState,
       }}
     >
       {children}
@@ -243,3 +429,4 @@ export function useAlerts() {
   }
   return context;
 }
+

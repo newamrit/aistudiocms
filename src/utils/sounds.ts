@@ -50,6 +50,11 @@ class SoundManager {
     this.playTone(800, 0.05, 'square', 0.1);
   }
 
+  // Tab switch sound
+  tabSwitch() {
+    this.playTone(600, 0.04, 'sine', 0.08);
+  }
+
   // Notification sound - two quick beeps
   notification() {
     this.playTone(880, 0.08, 'sine', 0.15);

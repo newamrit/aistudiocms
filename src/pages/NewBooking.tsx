@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { packages } from '../data/mockData';
 import { ClientType, ItineraryDay, BookingStatus } from '../types';
 import { Save, Plus, Trash2, GripVertical, ArrowLeft, FileText } from 'lucide-react';
 import { useBookings } from '../contexts/BookingContext';
+import { usePackages } from '../contexts/PackageContext';
 import { useAuth } from '../contexts/AuthContext';
+import { sounds } from '../utils/sounds';
 
 interface NewBookingProps {
   onNavigate: (page: string) => void;
@@ -11,6 +12,7 @@ interface NewBookingProps {
 
 export default function NewBooking({ onNavigate }: NewBookingProps) {
   const { addBooking } = useBookings();
+  const { packages } = usePackages();
   const { user } = useAuth();
   const [step, setStep] = useState(1);
   const [clientType, setClientType] = useState<ClientType>('INSTITUTIONAL');
@@ -28,6 +30,8 @@ export default function NewBooking({ onNavigate }: NewBookingProps) {
   const [notes, setNotes] = useState('');
   const [buildLater, setBuildLater] = useState(false);
   const [itineraryDays, setItineraryDays] = useState<ItineraryDay[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const addDay = () => {
     const newDay: ItineraryDay = {
@@ -57,33 +61,52 @@ export default function NewBooking({ onNavigate }: NewBookingProps) {
     }
   };
 
-  const handleSubmit = (status: BookingStatus = 'CONFIRMED') => {
-    const selectedPkg = selectedPackage ? packages.find(p => p.id === selectedPackage) : null;
-    
-    addBooking({
-      clientType,
-      clientName,
-      clientEmail,
-      clientPhone,
-      packageId: selectedPackage,
-      packageName: selectedPkg?.title,
-      status,
-      startDate,
-      endDate,
-      paxCount,
-      totalAgreedAmount: totalAmount,
-      advanceReceived: advanceAmount,
-      assignedTourOperatorId: null,
-      assignedTourOperatorName: undefined,
-      notes,
-      createdBy: user?.id || 1,
-      createdByName: user?.name || 'Unknown',
-      createdAt: new Date().toISOString().split('T')[0],
-      itineraryDays,
-    });
-    
-    alert(`Booking ${status === 'PROPOSED' ? 'proposal' : ''} created successfully!`);
-    onNavigate('bookings');
+  const handleSubmit = async (status: BookingStatus = 'CONFIRMED') => {
+    setSubmitError(null);
+    if (!clientName.trim()) {
+      setSubmitError('Client / Organization Name is required.');
+      setStep(1);
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const selectedPkg = selectedPackage ? packages.find(p => p.id === selectedPackage) : null;
+      const extraNotes: string[] = [];
+      if (contactPerson) extraNotes.push(`Contact: ${contactPerson}`);
+      if (groupBatch) extraNotes.push(`Group/Batch: ${groupBatch}`);
+      if (notes) extraNotes.push(notes);
+
+      await addBooking({
+        clientType,
+        clientName: clientName.trim(),
+        clientEmail: clientEmail.trim() || `contact-${Date.now()}@pailanepal.com.np`,
+        clientPhone: clientPhone.trim() || 'N/A',
+        packageId: selectedPackage,
+        packageName: selectedPkg?.title,
+        status,
+        startDate: startDate || new Date().toISOString().split('T')[0],
+        endDate: endDate || new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0],
+        paxCount: Math.max(1, paxCount),
+        totalAgreedAmount: totalAmount,
+        advanceReceived: advanceAmount,
+        assignedTourOperatorId: null,
+        assignedTourOperatorName: undefined,
+        notes: extraNotes.join(' | '),
+        createdBy: user?.id || 1,
+        createdByName: user?.name || 'Staff',
+        createdAt: new Date().toISOString().split('T')[0],
+        itineraryDays,
+      });
+      
+      sounds.success();
+      onNavigate('bookings');
+    } catch (err: any) {
+      console.error('Error creating booking:', err);
+      setSubmitError(err?.message || 'Failed to save booking to database. Please check your connection.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -541,23 +564,35 @@ export default function NewBooking({ onNavigate }: NewBookingProps) {
             </div>
           )}
 
+          {submitError && (
+            <div className="mt-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm font-medium">
+              ⚠️ {submitError}
+            </div>
+          )}
+
           <div className="mt-6 flex justify-between">
-            <button onClick={() => setStep(3)} className="px-6 py-2.5 border border-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">
+            <button 
+              disabled={isSubmitting}
+              onClick={() => setStep(3)} 
+              className="px-6 py-2.5 border border-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors disabled:opacity-50"
+            >
               ← Back
             </button>
             <div className="flex gap-3">
               <button
+                disabled={isSubmitting}
                 onClick={() => handleSubmit('PROPOSED')}
-                className="px-6 py-2.5 border border-paila-blue text-paila-blue rounded-lg text-sm font-medium hover:bg-blue-50 transition-colors"
+                className="px-6 py-2.5 border border-paila-blue text-paila-blue rounded-lg text-sm font-medium hover:bg-blue-50 transition-colors disabled:opacity-50"
               >
-                Save as Proposal
+                {isSubmitting ? 'Saving...' : 'Save as Proposal'}
               </button>
               <button
+                disabled={isSubmitting}
                 onClick={() => handleSubmit('CONFIRMED')}
-                className="flex items-center gap-2 px-6 py-2.5 bg-paila-orange text-white rounded-lg text-sm font-medium hover:bg-paila-orange-light transition-colors"
+                className="flex items-center gap-2 px-6 py-2.5 bg-paila-orange text-white rounded-lg text-sm font-medium hover:bg-paila-orange-light transition-colors disabled:opacity-50 shadow-sm"
               >
-                <Save size={16} />
-                Confirm Booking
+                <Save size={16} className={isSubmitting ? 'animate-spin' : ''} />
+                {isSubmitting ? 'Creating in Database...' : 'Confirm Booking'}
               </button>
             </div>
           </div>

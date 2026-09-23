@@ -1,10 +1,13 @@
 import { useAuth, hasAccess } from '../contexts/AuthContext';
 import { useFieldActivity } from '../contexts/FieldActivityContext';
 import { useAlerts } from '../contexts/AlertContext';
+import { useCompanySettings } from '../contexts/CompanySettingsContext';
+import ThemeToggle from './ThemeToggle';
+import DatabaseStatusBulbs from './DatabaseStatusBulbs';
 import { UserRole } from '../types';
 import {
   LayoutDashboard, CalendarPlus, CalendarDays, Map, Building2,
-  Wallet, Users, LogOut, Mountain, ChevronLeft, ChevronRight, Navigation, Activity, TrendingUp, Bell
+  Wallet, Users, LogOut, Mountain, ChevronLeft, ChevronRight, Navigation, Activity, TrendingUp, Bell, Settings
 } from 'lucide-react';
 import { useState } from 'react';
 import { sounds } from '../utils/sounds';
@@ -34,10 +37,12 @@ const navItems: NavItem[] = [
   { id: 'accounts-receivable', label: 'Accounts Receivable', icon: <TrendingUp size={20} />, roles: ['SUPER_ADMIN'] },
   { id: 'packages', label: 'Packages', icon: <Mountain size={20} />, roles: ['SUPER_ADMIN', 'SALES'] },
   { id: 'users', label: 'Users', icon: <Users size={20} />, roles: ['SUPER_ADMIN'] },
+  { id: 'settings', label: 'Settings', icon: <Settings size={20} />, roles: ['SUPER_ADMIN'] },
 ];
 
 export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
   const { user, logout } = useAuth();
+  const { settings } = useCompanySettings();
   const { getUnacknowledgedCount } = useFieldActivity();
   const { unreadCount: alertCount } = useAlerts();
   const [collapsed, setCollapsed] = useState(false);
@@ -46,6 +51,13 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
 
   const filteredNav = navItems.filter(item => hasAccess(user.role, item.roles));
   const unacknowledgedCount = getUnacknowledgedCount();
+
+  const brandInitials = settings.companyName
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(w => w[0]?.toUpperCase())
+    .join('') || 'PN';
 
   const getRoleBadge = (role: UserRole) => {
     const badges: Record<UserRole, string> = {
@@ -64,12 +76,12 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 flex-1">
             <div className="w-10 h-10 bg-gradient-to-br from-[#f35500] to-[#d94b00] rounded-xl flex items-center justify-center font-bold text-sm shrink-0 shadow-lg shadow-orange-500/20">
-              PN
+              {brandInitials}
             </div>
             {!collapsed && (
-              <div className="animate-slide-in">
-                <h1 className="font-bold text-base leading-tight">Paila Nepal</h1>
-                <p className="text-xs text-blue-200">TravelCMS</p>
+              <div className="animate-slide-in overflow-hidden">
+                <h1 className="font-bold text-sm leading-tight truncate">{settings.companyName}</h1>
+                <p className="text-[11px] text-blue-200">ERP & TravelCMS</p>
               </div>
             )}
           </div>
@@ -129,11 +141,16 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
         ))}
       </nav>
 
-      {/* User Info */}
-      <div className="border-t border-white/10 p-3">
+      {/* User Info & Theme */}
+      <div className="border-t border-white/10 p-3 space-y-2">
         {!collapsed ? (
           <div className="animate-slide-in">
-            <div className="flex items-center gap-3 mb-3 p-2 rounded-xl bg-white/5">
+            <div className="flex items-center justify-between mb-2 px-1">
+              <span className="text-[11px] font-semibold text-blue-200/70">Theme</span>
+              <ThemeToggle variant="pill" showLabel={false} />
+            </div>
+
+            <div className="flex items-center gap-3 mb-2 p-2 rounded-xl bg-white/5">
               <div className="relative">
                 <div className="w-10 h-10 bg-gradient-to-br from-[#f35500] to-[#d94b00] rounded-full flex items-center justify-center text-sm font-bold shadow-lg">
                   {user.name.split(' ').map(n => n[0]).join('')}
@@ -142,7 +159,10 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold truncate">{user.name}</p>
-                <p className="text-xs text-blue-200">{getRoleBadge(user.role)}</p>
+                <div className="flex items-center justify-between mt-0.5">
+                  <p className="text-xs text-blue-200">{getRoleBadge(user.role)}</p>
+                  <DatabaseStatusBulbs compact theme="dark" />
+                </div>
               </div>
             </div>
             <button
@@ -157,9 +177,13 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
             </button>
           </div>
         ) : (
-          <button onClick={() => { sounds.warning(); logout(); }} className="w-full flex justify-center py-2 text-red-300 hover:text-white hover:bg-red-500/20 rounded-xl transition-all">
-            <LogOut size={18} />
-          </button>
+          <div className="space-y-2 flex flex-col items-center">
+            <DatabaseStatusBulbs compact theme="dark" />
+            <ThemeToggle variant="button" />
+            <button onClick={() => { sounds.warning(); logout(); }} className="w-full flex justify-center py-2 text-red-300 hover:text-white hover:bg-red-500/20 rounded-xl transition-all" title="Logout">
+              <LogOut size={18} />
+            </button>
+          </div>
         )}
       </div>
 
