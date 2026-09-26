@@ -6,15 +6,17 @@ import { useFieldActivity } from '../contexts/FieldActivityContext';
 import { useAlerts } from '../contexts/AlertContext';
 import { useBackup } from '../contexts/BackupContext';
 import BackupRestorePanel from '../components/BackupRestorePanel';
+import OfflineSyncLog from '../components/OfflineSyncLog';
 import { 
   Building2, MapPin, Phone, Globe, Hash, FileText, Check, 
   RotateCcw, Eye, ShieldCheck, AlertCircle, Sparkles, Printer,
   Mail, LifeBuoy, CheckCircle2, ShieldAlert, HardDrive, Database,
-  Download, Clock, KeyRound, Lock, Unlock, Trash2, Flame, RefreshCw, X
+  Download, Clock, KeyRound, Lock, Unlock, Trash2, Flame, RefreshCw, X, Activity
 } from 'lucide-react';
 import { sounds } from '../utils/sounds';
 import { useBookings } from '../contexts/BookingContext';
 import DocumentViewer, { DocumentType } from '../components/DocumentViewer';
+import { apiClient } from '../api/apiClient';
 
 interface SettingsPageProps {
   onNavigate?: (page: string, id?: number) => void;
@@ -30,7 +32,7 @@ export default function SettingsPage({ onNavigate }: SettingsPageProps) {
   const { snapshots, dailyConfig, downloadBackupFile, downloadSqlBackupFile } = useBackup();
 
   // Active settings tab
-  const [activeTab, setActiveTab] = useState<'company' | 'backup'>('company');
+  const [activeTab, setActiveTab] = useState<'company' | 'backup' | 'sync-log'>('company');
 
   // Local form state
   const [formData, setFormData] = useState(settings);
@@ -49,6 +51,7 @@ export default function SettingsPage({ onNavigate }: SettingsPageProps) {
   const [confirmClickCount, setConfirmClickCount] = useState<number>(0);
   const [isExecutingReset, setIsExecutingReset] = useState<boolean>(false);
   const [resetCompleted, setResetCompleted] = useState<boolean>(false);
+  const [purgeBookings, setPurgeBookings] = useState<boolean>(true);
 
   // Sync when settings change from outside
   useEffect(() => {
@@ -235,12 +238,20 @@ export default function SettingsPage({ onNavigate }: SettingsPageProps) {
       sounds.cashRegister();
 
       try {
-        // 1. Wipe in-memory contexts and localStorage stores
+        // 1. Wipe backend database state
+        await apiClient.maintenance.purgeOperationalData({
+          clearBookings: purgeBookings,
+          clearOperations: true,
+          clearActivities: true,
+          clearAlerts: true
+        });
+
+        // 2. Wipe in-memory contexts and localStorage stores
         resetAuditActivities();
         resetFieldActivities();
         resetAlerts();
-
-        // 2. Clear all activity & alert cache keys explicitly
+        
+        // 3. Clear all activity & alert cache keys explicitly
         const storageKeysToClear = [
           'paila_nepal_recent_activities',
           'paila_cms_field_activities',
@@ -249,15 +260,20 @@ export default function SettingsPage({ onNavigate }: SettingsPageProps) {
           'paila_field_activities',
           'paila_cms_activities'
         ];
+        
+        if (purgeBookings) {
+          storageKeysToClear.push('paila_cms_bookings');
+        }
+
         storageKeysToClear.forEach(k => {
           try {
-            localStorage.setItem(k, JSON.stringify([]));
+            localStorage.removeItem(k);
           } catch {
             // ignore
           }
         });
 
-        // 3. Clear IndexedDB offline sync queue
+        // 4. Clear IndexedDB offline sync queue
         try {
           const { SyncQueue } = await import('../utils/offlineDB');
           await SyncQueue.clear();
@@ -265,12 +281,12 @@ export default function SettingsPage({ onNavigate }: SettingsPageProps) {
           // ignore
         }
 
-        // 4. Record a clean zero-state commissioning milestone
+        // 5. Record a clean zero-state commissioning milestone
         logActivity({
           type: 'SETTINGS_UPDATE',
           category: 'SETTINGS',
           title: '🌟 Production Commissioning: Zero-State Initialized',
-          description: `All activity timelines, recent activity feeds, and field alerts were purged to zero state by ${user?.name || 'Super Admin'} for commercial Day 1 use.`,
+          description: `All operational data ${purgeBookings ? '(including Bookings)' : ''} was purged to zero state by ${user?.name || 'Super Admin'} for commercial Day 1 use.`,
           actor: {
             name: user?.name || 'Super Admin',
             email: user?.email || 'admin@pailanepal.com',
@@ -283,9 +299,15 @@ export default function SettingsPage({ onNavigate }: SettingsPageProps) {
 
         setResetCompleted(true);
         sounds.success();
+        
+        // Refresh page after a delay to ensure all contexts are re-hydrated from empty state
+        setTimeout(() => {
+          window.location.reload();
+        }, 3000);
       } catch (err) {
         console.error('Failed to execute zero-state purge:', err);
-        alert('Zero-state purge encountered an error. Please try again.');
+        sounds.warning();
+        setPasswordError('Zero-state purge encountered an error. Please try again.');
       } finally {
         setIsExecutingReset(false);
       }
@@ -302,7 +324,7 @@ export default function SettingsPage({ onNavigate }: SettingsPageProps) {
   };
 
   // Acronym preview calculation
-  const initials = formData.companyName
+  const initials = (formData.companyName || 'Paila Nepal')
     .split(' ')
     .filter(Boolean)
     .slice(0, 2)
@@ -323,12 +345,18 @@ export default function SettingsPage({ onNavigate }: SettingsPageProps) {
               <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Enterprise ERP Settings</span>
             </div>
             <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
-              {activeTab === 'company' ? 'Company Profile & Document Settings' : 'System Backup & Disaster Recovery'}
+              {activeTab === 'company' 
+                ? 'Company Profile & Document Settings' 
+                : activeTab === 'backup'
+                ? 'System Backup & Disaster Recovery'
+                : 'Offline Background Sync Log & Gateway Diagnostics'}
             </h1>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-2xl">
               {activeTab === 'company' 
                 ? 'Configure official company credentials, address, telephone lines, domain, and tax numbers (PAN / VAT). Changes apply immediately to all generated PDFs, Invoices, Vouchers, and Itineraries.'
-                : 'Manage automated daily backups, create on-demand recovery snapshots, export full system JSON archives, and restore data with instant rollback protection.'}
+                : activeTab === 'backup'
+                ? 'Manage automated daily backups, create on-demand recovery snapshots, export full system JSON archives, and restore data with instant rollback protection.'
+                : 'Troubleshoot connectivity in the Himalayas, audit background sync attempts, inspect payload transmissions, and verify cloud gateway integrity.'}
             </p>
           </div>
 
@@ -352,7 +380,7 @@ export default function SettingsPage({ onNavigate }: SettingsPageProps) {
                   Test Live PDF
                 </button>
               </>
-            ) : (
+            ) : activeTab === 'backup' ? (
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -373,7 +401,7 @@ export default function SettingsPage({ onNavigate }: SettingsPageProps) {
                   Export .JSON
                 </button>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -436,18 +464,102 @@ export default function SettingsPage({ onNavigate }: SettingsPageProps) {
               {dailyConfig.enabled ? 'Daily: Active' : `${snapshots.length} Points`}
             </span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('sync-log');
+              sounds.click();
+            }}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'sync-log'
+                ? 'bg-paila-blue text-white shadow-md shadow-blue-500/20'
+                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Activity size={16} />
+            Offline Sync Log
+          </button>
         </div>
 
         {/* Tab Subtext */}
         <span className="text-xs text-slate-400 hidden sm:inline">
           {activeTab === 'company' 
             ? 'Affects invoices, proposals, vouchers & PDF letterheads' 
-            : `Schedule: Daily ${dailyConfig.scheduledTime} · Retention: ${dailyConfig.retentionDays}d`}
+            : activeTab === 'backup'
+            ? `Schedule: Daily ${dailyConfig.scheduledTime} · Retention: ${dailyConfig.retentionDays}d`
+            : 'Live background sync attempts & troubleshooting diagnostics'}
         </span>
       </div>
 
       {activeTab === 'backup' ? (
-        <BackupRestorePanel />
+        <div className="space-y-6">
+          <BackupRestorePanel />
+          
+          {/* Production Commissioning & System Maintenance Section */}
+          <div className="bg-white dark:bg-[#111c30] border border-slate-200 dark:border-[#22324b] rounded-2xl p-6 shadow-2xs overflow-hidden relative">
+            <div className="absolute top-0 right-0 w-32 h-32 -mr-16 -mt-16 bg-red-500/5 rounded-full blur-3xl pointer-events-none"></div>
+            
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 flex items-center justify-center border border-red-200 dark:border-red-800 shrink-0">
+                  <Flame size={24} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                    System Maintenance & Production Commissioning
+                  </h2>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-xl">
+                    Prepare the ERP for live commercial usage by purging all test data, demo activities, and development timelines. This action initializes a pristine "Zero-State" system.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowZeroStateModal(true)}
+                className="flex items-center justify-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl shadow-lg shadow-red-600/20 transition-all cursor-pointer group active:scale-95"
+              >
+                <Trash2 size={18} className="group-hover:rotate-12 transition-transform" />
+                Purge for Fresh Start
+              </button>
+            </div>
+
+            <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4 border-t border-slate-100 dark:border-slate-800 pt-6">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500">
+                  <Activity size={16} />
+                </div>
+                <div className="text-[11px] leading-tight">
+                  <p className="font-bold text-slate-700 dark:text-slate-300">Clean Ledger</p>
+                  <p className="text-slate-500">Wipe all audit streams</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500">
+                  <Clock size={16} />
+                </div>
+                <div className="text-[11px] leading-tight">
+                  <p className="font-bold text-slate-700 dark:text-slate-300">Live Reset</p>
+                  <p className="text-slate-500">Reset field checkpoints</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500">
+                  <ShieldCheck size={16} />
+                </div>
+                <div className="text-[11px] leading-tight">
+                  <p className="font-bold text-slate-700 dark:text-slate-300">Pristine State</p>
+                  <p className="text-slate-500">Clear all pending alerts</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : activeTab === 'sync-log' ? (
+        <div className="bg-white dark:bg-[#111c30] border border-slate-200 dark:border-[#22324b] rounded-2xl p-6 shadow-2xs">
+          <OfflineSyncLog embedded />
+        </div>
       ) : (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Form Column */}
@@ -997,6 +1109,40 @@ export default function SettingsPage({ onNavigate }: SettingsPageProps) {
                       <li><strong>Offline Sync Queues</strong>: Clears local cached mutation queues.</li>
                       <li><strong>Preserved</strong>: User RBAC logins, company settings, & core catalog.</li>
                     </ul>
+                  </div>
+
+                  {/* Options Checkboxes */}
+                  <div className="space-y-3 p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">Scope of Purge Protocol:</span>
+                    
+                    <label className="flex items-center gap-3 cursor-pointer group">
+                      <input 
+                        type="checkbox" 
+                        checked={purgeBookings}
+                        onChange={(e) => setPurgeBookings(e.target.checked)}
+                        className="w-4 h-4 rounded border-slate-300 text-red-600 focus:ring-red-500"
+                      />
+                      <div className="flex-1">
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200 group-hover:text-red-500 transition-colors">Clear All Bookings & Transactions</span>
+                        <p className="text-[10px] text-slate-500">Removes all client bookings, vouchers, and accounts receivable.</p>
+                      </div>
+                    </label>
+
+                    <label className="flex items-center gap-3 cursor-not-allowed opacity-60">
+                      <input type="checkbox" checked readOnly className="w-4 h-4 rounded border-slate-300 text-red-600 focus:ring-red-500" />
+                      <div className="flex-1">
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">Clear Field Activity & Checkpoints</span>
+                        <p className="text-[10px] text-slate-500">Purges all live updates from tour leaders and safety alerts.</p>
+                      </div>
+                    </label>
+
+                    <label className="flex items-center gap-3 cursor-not-allowed opacity-60">
+                      <input type="checkbox" checked readOnly className="w-4 h-4 rounded border-slate-300 text-red-600 focus:ring-red-500" />
+                      <div className="flex-1">
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">Clear System Audit Stream</span>
+                        <p className="text-[10px] text-slate-500">Wipes the administrative activity log and recent events feed.</p>
+                      </div>
+                    </label>
                   </div>
 
                   {/* Verification Flow */}

@@ -110,7 +110,8 @@ export default function BookingDetail({ bookingId, onNavigate }: BookingDetailPr
     updateBooking(bookingId, editData);
     sounds.success();
     setIsEditing(false);
-    alert('Booking updated successfully!');
+    setStatusToast('Booking details updated successfully!');
+    setTimeout(() => setStatusToast(null), 4000);
   };
 
   const handleDelete = () => {
@@ -141,11 +142,13 @@ export default function BookingDetail({ bookingId, onNavigate }: BookingDetailPr
   };
 
   const getRelativeTime = (dateStr: string) => {
+    if (!dateStr) return 'Just now';
     try {
       const d = new Date(dateStr);
+      const time = d.getTime();
+      if (!Number.isFinite(time)) return 'Just now';
       const now = new Date();
-      const diffMs = now.getTime() - d.getTime();
-      if (diffMs < 0) return 'Just now';
+      const diffMs = Math.max(0, now.getTime() - time);
       const diffSec = Math.floor(diffMs / 1000);
       const diffMin = Math.floor(diffSec / 60);
       const diffHours = Math.floor(diffMin / 60);
@@ -158,9 +161,10 @@ export default function BookingDetail({ bookingId, onNavigate }: BookingDetailPr
       if (diffDays < 30) return `${diffDays}d ago`;
       const diffMonths = Math.floor(diffDays / 30);
       if (diffMonths < 12) return `${diffMonths}mo ago`;
-      return `${Math.floor(diffDays / 365)}y ago`;
+      const diffYears = Math.floor(diffDays / 365);
+      return `${Number.isFinite(diffYears) ? diffYears : 1}y ago`;
     } catch {
-      return '';
+      return 'Just now';
     }
   };
 
@@ -262,7 +266,9 @@ export default function BookingDetail({ bookingId, onNavigate }: BookingDetailPr
 
   const handleApplyStatusChange = () => {
     if (selectedNewStatus === booking.status) {
-      alert('Selected status is the same as the current status.');
+      sounds.warning();
+      setStatusToast('Selected status is already the current status.');
+      setTimeout(() => setStatusToast(null), 4000);
       return;
     }
 
@@ -492,11 +498,11 @@ export default function BookingDetail({ bookingId, onNavigate }: BookingDetailPr
               <div className="grid grid-cols-3 gap-4">
                 <div className="bg-blue-50 rounded-lg p-4 text-center">
                   <p className="text-xs text-blue-600 mb-1">Total Amount</p>
-                  <p className="text-lg font-bold text-paila-blue">NPR {booking.totalAgreedAmount.toLocaleString()}</p>
+                  <p className="text-lg font-bold text-paila-blue">NPR {(Number.isFinite(Number(booking.totalAgreedAmount)) ? Number(booking.totalAgreedAmount) : 0).toLocaleString()}</p>
                 </div>
                 <div className="bg-green-50 rounded-lg p-4 text-center">
                   <p className="text-xs text-green-600 mb-1">Advance Received</p>
-                  <p className="text-lg font-bold text-green-700">NPR {booking.advanceReceived.toLocaleString()}</p>
+                  <p className="text-lg font-bold text-green-700">NPR {(Number.isFinite(Number(booking.advanceReceived)) ? Number(booking.advanceReceived) : 0).toLocaleString()}</p>
                 </div>
                 <div className="bg-red-50 rounded-lg p-4 text-center">
                   <p className="text-xs text-red-600 mb-1">Balance Due</p>
@@ -510,26 +516,30 @@ export default function BookingDetail({ bookingId, onNavigate }: BookingDetailPr
               <div className="bg-white rounded-xl border border-slate-200 p-5">
                 <h3 className="font-semibold text-slate-900 mb-4">Vendor Allocations</h3>
                 <div className="space-y-3">
-                  {allocations.map(alloc => (
-                    <div key={alloc.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                      <div>
-                        <p className="text-sm font-medium text-slate-900">{alloc.vendorName}</p>
-                        <p className="text-xs text-slate-500">{alloc.serviceType} • {alloc.serviceDate}</p>
-                        <p className="text-[10px] text-slate-400 mt-0.5">{alloc.specialNotes}</p>
+                  {allocations.map(alloc => {
+                    const cost = Number.isFinite(Number(alloc.agreedCost)) ? Number(alloc.agreedCost) : 0;
+                    const paid = Number.isFinite(Number(alloc.amountPaid)) ? Number(alloc.amountPaid) : 0;
+                    return (
+                      <div key={alloc.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                        <div>
+                          <p className="text-sm font-medium text-slate-900">{alloc.vendorName}</p>
+                          <p className="text-xs text-slate-500">{alloc.serviceType} • {alloc.serviceDate}</p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">{alloc.specialNotes}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-bold text-slate-900">NPR {cost.toLocaleString()}</p>
+                          <p className={`text-xs font-medium ${alloc.paymentStatus === 'SETTLED' ? 'text-green-600' : alloc.paymentStatus === 'PARTIALLY_PAID' ? 'text-amber-600' : 'text-red-500'}`}>
+                            {alloc.paymentStatus.replace('_', ' ')} (Paid: {paid.toLocaleString()})
+                          </p>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-sm font-bold text-slate-900">NPR {alloc.agreedCost.toLocaleString()}</p>
-                        <p className={`text-xs font-medium ${alloc.paymentStatus === 'SETTLED' ? 'text-green-600' : alloc.paymentStatus === 'PARTIALLY_PAID' ? 'text-amber-600' : 'text-red-500'}`}>
-                          {alloc.paymentStatus.replace('_', ' ')} (Paid: {alloc.amountPaid.toLocaleString()})
-                        </p>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
                 <div className="mt-4 pt-4 border-t border-slate-200 flex justify-between text-sm">
-                  <span className="text-slate-500">Total Vendor Cost: <strong>NPR {totalVendorCost.toLocaleString()}</strong></span>
-                  <span className="text-slate-500">Paid: <strong className="text-green-600">NPR {totalVendorPaid.toLocaleString()}</strong></span>
-                  <span className="text-slate-500">Due: <strong className="text-red-600">NPR {Math.max(0, totalVendorCost - totalVendorPaid).toLocaleString()}</strong></span>
+                  <span className="text-slate-500">Total Vendor Cost: <strong>NPR {(Number.isFinite(totalVendorCost) ? totalVendorCost : 0).toLocaleString()}</strong></span>
+                  <span className="text-slate-500">Paid: <strong className="text-green-600">NPR {(Number.isFinite(totalVendorPaid) ? totalVendorPaid : 0).toLocaleString()}</strong></span>
+                  <span className="text-slate-500">Due: <strong className="text-red-600">NPR {Math.max(0, (totalVendorCost || 0) - (totalVendorPaid || 0)).toLocaleString()}</strong></span>
                 </div>
               </div>
             )}
@@ -747,8 +757,8 @@ export default function BookingDetail({ bookingId, onNavigate }: BookingDetailPr
                         <span className="px-2 py-1 bg-slate-100 text-xs rounded-md font-medium">{alloc.serviceType}</span>
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-600">{alloc.serviceDate}</td>
-                      <td className="px-4 py-3 text-sm font-medium">NPR {alloc.agreedCost.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-sm text-green-600 font-medium">NPR {alloc.amountPaid.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-sm font-medium">NPR {(Number.isFinite(Number(alloc.agreedCost)) ? Number(alloc.agreedCost) : 0).toLocaleString()}</td>
+                      <td className="px-4 py-3 text-sm text-green-600 font-medium">NPR {(Number.isFinite(Number(alloc.amountPaid)) ? Number(alloc.amountPaid) : 0).toLocaleString()}</td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-1 text-[10px] font-semibold rounded-full ${
                           alloc.paymentStatus === 'SETTLED' ? 'bg-green-100 text-green-700' :
@@ -1473,8 +1483,8 @@ export default function BookingDetail({ bookingId, onNavigate }: BookingDetailPr
                     <label className="block text-sm font-medium text-slate-700 mb-1.5">Pax Count</label>
                     <input
                       type="number"
-                      value={editData.paxCount}
-                      onChange={e => setEditData({ ...editData, paxCount: Number(e.target.value) })}
+                      value={Number.isFinite(editData.paxCount) ? editData.paxCount : 1}
+                      onChange={e => setEditData({ ...editData, paxCount: Number.isFinite(Number(e.target.value)) ? Math.max(1, Number(e.target.value)) : 1 })}
                       className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-paila-blue/20 focus:border-paila-blue outline-none"
                     />
                   </div>
@@ -1489,8 +1499,8 @@ export default function BookingDetail({ bookingId, onNavigate }: BookingDetailPr
                     <label className="block text-sm font-medium text-slate-700 mb-1.5">Total Amount (NPR)</label>
                     <input
                       type="number"
-                      value={editData.totalAgreedAmount}
-                      onChange={e => setEditData({ ...editData, totalAgreedAmount: Number(e.target.value) })}
+                      value={Number.isFinite(editData.totalAgreedAmount) ? editData.totalAgreedAmount : 0}
+                      onChange={e => setEditData({ ...editData, totalAgreedAmount: Number.isFinite(Number(e.target.value)) ? Math.max(0, Number(e.target.value)) : 0 })}
                       className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-paila-blue/20 focus:border-paila-blue outline-none"
                     />
                   </div>
@@ -1498,8 +1508,8 @@ export default function BookingDetail({ bookingId, onNavigate }: BookingDetailPr
                     <label className="block text-sm font-medium text-slate-700 mb-1.5">Advance Received (NPR)</label>
                     <input
                       type="number"
-                      value={editData.advanceReceived}
-                      onChange={e => setEditData({ ...editData, advanceReceived: Number(e.target.value) })}
+                      value={Number.isFinite(editData.advanceReceived) ? editData.advanceReceived : 0}
+                      onChange={e => setEditData({ ...editData, advanceReceived: Number.isFinite(Number(e.target.value)) ? Math.max(0, Number(e.target.value)) : 0 })}
                       className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-paila-blue/20 focus:border-paila-blue outline-none"
                     />
                   </div>

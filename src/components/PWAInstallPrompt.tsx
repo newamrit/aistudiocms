@@ -114,13 +114,13 @@ export const PWAInstallPrompt: React.FC<PWAInstallPromptProps> = ({
   );
 };
 
-interface InstallGuideModalProps {
+export interface InstallGuideModalProps {
   isIOS: boolean;
   isAndroid: boolean;
   onClose: () => void;
 }
 
-const InstallGuideModal: React.FC<InstallGuideModalProps> = ({ isIOS, isAndroid, onClose }) => {
+export const InstallGuideModal: React.FC<InstallGuideModalProps> = ({ isIOS, isAndroid, onClose }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-4 animate-in fade-in duration-200">
       <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-3xl p-5 sm:p-6 shadow-2xl text-white relative animate-in slide-in-from-bottom-6 duration-300">

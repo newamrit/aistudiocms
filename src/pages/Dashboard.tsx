@@ -58,20 +58,24 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
 
   const totalBookings = bookings.length;
   const activeBookings = bookings.filter(b => ['CONFIRMED', 'IN_PROGRESS'].includes(b.status)).length;
-  const totalRevenue = bookings.reduce((sum, b) => sum + b.totalAgreedAmount, 0);
-  const totalAdvance = bookings.reduce((sum, b) => sum + b.advanceReceived, 0);
-  const pendingVendorPayments = allocations.reduce((sum, o) => sum + (o.agreedCost - o.amountPaid), 0);
+  const totalRevenue = bookings.reduce((sum, b) => sum + (Number.isFinite(Number(b.totalAgreedAmount)) ? Number(b.totalAgreedAmount) : 0), 0);
+  const totalAdvance = bookings.reduce((sum, b) => sum + (Number.isFinite(Number(b.advanceReceived)) ? Number(b.advanceReceived) : 0), 0);
+  const pendingVendorPayments = allocations.reduce((sum, o) => {
+    const cost = Number.isFinite(Number(o.agreedCost)) ? Number(o.agreedCost) : 0;
+    const paid = Number.isFinite(Number(o.amountPaid)) ? Number(o.amountPaid) : 0;
+    return sum + Math.max(0, cost - paid);
+  }, 0);
   const upcomingTours = bookings.filter(b => b.status === 'CONFIRMED').length;
   const completedThisMonth = bookings.filter(b => b.status === 'COMPLETED').length;
   const proposedCount = bookings.filter(b => b.status === 'PROPOSED').length;
 
   const stats = [
-    { label: 'Total Bookings', value: totalBookings, icon: <CalendarDays size={22} />, color: 'bg-blue-50 text-paila-blue', change: '+12%' },
-    { label: 'Active Tours', value: activeBookings, icon: <Mountain size={22} />, color: 'bg-orange-50 text-paila-orange', change: '+3' },
-    { label: 'Total Revenue', value: `NPR ${(totalRevenue / 100000).toFixed(1)}L`, icon: <TrendingUp size={22} />, color: 'bg-green-50 text-green-700', change: '+18%' },
-    { label: 'Advance Received', value: `NPR ${(totalAdvance / 100000).toFixed(1)}L`, icon: <Wallet size={22} />, color: 'bg-purple-50 text-purple-700', change: '+8%' },
-    { label: 'Vendor Payables', value: `NPR ${(pendingVendorPayments / 1000).toFixed(0)}K`, icon: <AlertCircle size={22} />, color: 'bg-red-50 text-red-600', change: '-5%' },
-    { label: 'Upcoming Tours', value: upcomingTours, icon: <Clock size={22} />, color: 'bg-amber-50 text-amber-700', change: '' },
+    { label: 'Total Bookings', value: String(Number.isFinite(totalBookings) ? totalBookings : 0), icon: <CalendarDays size={22} />, color: 'bg-blue-50 text-paila-blue', change: '+12%' },
+    { label: 'Active Tours', value: String(Number.isFinite(activeBookings) ? activeBookings : 0), icon: <Mountain size={22} />, color: 'bg-orange-50 text-paila-orange', change: '+3' },
+    { label: 'Total Revenue', value: `NPR ${(Number.isFinite(totalRevenue) ? totalRevenue / 100000 : 0).toFixed(1)}L`, icon: <TrendingUp size={22} />, color: 'bg-green-50 text-green-700', change: '+18%' },
+    { label: 'Advance Received', value: `NPR ${(Number.isFinite(totalAdvance) ? totalAdvance / 100000 : 0).toFixed(1)}L`, icon: <Wallet size={22} />, color: 'bg-purple-50 text-purple-700', change: '+8%' },
+    { label: 'Vendor Payables', value: `NPR ${(Number.isFinite(pendingVendorPayments) ? pendingVendorPayments / 1000 : 0).toFixed(0)}K`, icon: <AlertCircle size={22} />, color: 'bg-red-50 text-red-600', change: '-5%' },
+    { label: 'Upcoming Tours', value: String(Number.isFinite(upcomingTours) ? upcomingTours : 0), icon: <Clock size={22} />, color: 'bg-amber-50 text-amber-700', change: '' },
   ];
 
   const recentBookings = [...bookings].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5);
@@ -103,7 +107,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
             </span>
           </div>
           <h1 className="text-xl md:text-2xl font-bold text-slate-900">
-            Welcome back, {user.name.split(' ')[0]}
+            Welcome back, {(user?.name || 'User').split(' ')[0]}
           </h1>
           <p className="text-slate-500 text-sm md:text-base mt-0.5">
             {isSuperAdmin
@@ -247,7 +251,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                 </span>
               )}
             </div>
-            <p className="text-lg md:text-2xl font-bold text-slate-900 tabular-nums">{stat.value}</p>
+            <p className="text-lg md:text-2xl font-bold text-slate-900 tabular-nums">{String(stat.value)}</p>
             <p className="text-xs md:text-sm text-slate-500 mt-1">{stat.label}</p>
           </div>
         ))}
@@ -385,7 +389,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                                     <CloudSun size={11} /> {act.metadata.weather}
                                   </span>
                                 )}
-                                {act.metadata?.amount && (
+                                {act.metadata?.amount !== undefined && Number.isFinite(Number(act.metadata.amount)) && (
                                   <span className="font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 text-[10px]">
                                     NPR {Number(act.metadata.amount).toLocaleString()}
                                   </span>
@@ -424,7 +428,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
             <div className="card overflow-hidden">
               <div className="px-4 md:px-5 py-3 md:py-4 border-b border-slate-100 flex items-center justify-between">
                 <h2 className="font-semibold text-sm md:text-base text-slate-900">Recent Bookings</h2>
-                <span className="badge-info">{totalBookings} total</span>
+                <span className="badge-info">{Number.isFinite(totalBookings) ? totalBookings : 0} total</span>
               </div>
               <div className="divide-y divide-slate-50">
                 {recentBookings.map(booking => (
@@ -439,12 +443,12 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                         </div>
                         <p className="font-medium text-sm md:text-base text-slate-900 mt-1 truncate">{booking.clientName}</p>
                         <p className="text-xs md:text-sm text-slate-500 mt-0.5">
-                          {booking.packageName || 'Custom Itinerary'} • {booking.paxCount} pax
+                          {booking.packageName || 'Custom Itinerary'} • {Number.isFinite(Number(booking.paxCount)) ? booking.paxCount : 1} pax
                         </p>
                       </div>
                       <div className="text-right ml-3 md:ml-4">
                         <p className="text-xs md:text-sm font-semibold text-slate-900">
-                          NPR {booking.totalAgreedAmount.toLocaleString()}
+                          NPR {(Number.isFinite(Number(booking.totalAgreedAmount)) ? Number(booking.totalAgreedAmount) : 0).toLocaleString()}
                         </p>
                         <p className="text-[10px] text-slate-400">{booking.startDate}</p>
                       </div>
@@ -467,12 +471,16 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                   <div key={i}>
                     <div className="flex justify-between text-xs mb-1">
                       <span className="text-slate-600">{item.label}</span>
-                      <span className="font-medium text-slate-900">{item.count}</span>
+                      <span className="font-medium text-slate-900">{Number.isFinite(item.count) ? item.count : 0}</span>
                     </div>
                     <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                       <div
                         className={`h-full ${item.color} rounded-full transition-all duration-500`}
-                        style={{ width: totalBookings ? `${(item.count / totalBookings) * 100}%` : '0%' }}
+                        style={{
+                          width: (totalBookings > 0 && Number.isFinite(item.count))
+                            ? `${Math.min(100, Math.max(0, Math.round((item.count / totalBookings) * 100)))}%`
+                            : '0%',
+                        }}
                       />
                     </div>
                   </div>
@@ -495,7 +503,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                       <span className="text-lg md:text-xl">{item.icon}</span>
                       <span className="text-xs md:text-sm text-slate-600">{item.type}</span>
                     </div>
-                    <span className="text-sm md:text-base font-semibold text-slate-900">{item.count}</span>
+                    <span className="text-sm md:text-base font-semibold text-slate-900">{Number.isFinite(item.count) ? item.count : 0}</span>
                   </div>
                 ))}
               </div>
@@ -509,7 +517,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
           <div className="lg:col-span-2 card overflow-hidden">
             <div className="px-4 md:px-5 py-3 md:py-4 border-b border-slate-100 flex items-center justify-between">
               <h2 className="font-semibold text-sm md:text-base text-slate-900">Recent Bookings</h2>
-              <span className="badge-info">{totalBookings} total</span>
+              <span className="badge-info">{Number.isFinite(totalBookings) ? totalBookings : 0} total</span>
             </div>
             <div className="divide-y divide-slate-50">
               {recentBookings.map(booking => (
@@ -524,12 +532,12 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                       </div>
                       <p className="font-medium text-sm md:text-base text-slate-900 mt-1 truncate">{booking.clientName}</p>
                       <p className="text-xs md:text-sm text-slate-500 mt-0.5">
-                        {booking.packageName || 'Custom Itinerary'} • {booking.paxCount} pax
+                        {booking.packageName || 'Custom Itinerary'} • {Number.isFinite(Number(booking.paxCount)) ? booking.paxCount : 1} pax
                       </p>
                     </div>
                     <div className="text-right ml-3 md:ml-4">
                       <p className="text-xs md:text-sm font-semibold text-slate-900">
-                        NPR {booking.totalAgreedAmount.toLocaleString()}
+                        NPR {(Number.isFinite(Number(booking.totalAgreedAmount)) ? Number(booking.totalAgreedAmount) : 0).toLocaleString()}
                       </p>
                       <p className="text-[10px] text-slate-400">{booking.startDate}</p>
                     </div>
@@ -554,12 +562,16 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                   <div key={i}>
                     <div className="flex justify-between text-xs mb-1">
                       <span className="text-slate-600">{item.label}</span>
-                      <span className="font-medium text-slate-900">{item.count}</span>
+                      <span className="font-medium text-slate-900">{Number.isFinite(item.count) ? item.count : 0}</span>
                     </div>
                     <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                       <div
                         className={`h-full ${item.color} rounded-full transition-all duration-500`}
-                        style={{ width: totalBookings ? `${(item.count / totalBookings) * 100}%` : '0%' }}
+                        style={{
+                          width: (totalBookings > 0 && Number.isFinite(item.count))
+                            ? `${Math.min(100, Math.max(0, Math.round((item.count / totalBookings) * 100)))}%`
+                            : '0%',
+                        }}
                       />
                     </div>
                   </div>
@@ -610,7 +622,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                       <span className="text-lg md:text-xl">{item.icon}</span>
                       <span className="text-xs md:text-sm text-slate-600">{item.type}</span>
                     </div>
-                    <span className="text-sm md:text-base font-semibold text-slate-900">{item.count}</span>
+                    <span className="text-sm md:text-base font-semibold text-slate-900">{Number.isFinite(item.count) ? item.count : 0}</span>
                   </div>
                 ))}
               </div>

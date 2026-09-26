@@ -107,17 +107,70 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  // Sync users from backend API or database
+  // Sync users from backend API / persistent database
   const refreshUsers = useCallback(async () => {
     try {
       const list = await apiClient.users.list();
       if (Array.isArray(list) && list.length > 0) {
         setUsersList(list);
+
+        // Cross-check & sync active session if current logged-in user changed in DB
+        setUser(currentAuth => {
+          if (!currentAuth) return null;
+          const freshCurrent = list.find(u => u.id === currentAuth.id);
+          if (freshCurrent) {
+            const hasRoleOrStatusChanged = 
+              freshCurrent.role !== currentAuth.role || 
+              freshCurrent.isActive !== currentAuth.isActive ||
+              freshCurrent.name !== currentAuth.name ||
+              freshCurrent.email !== currentAuth.email;
+            
+            if (hasRoleOrStatusChanged) {
+              const updatedSession = { ...currentAuth, ...freshCurrent };
+              try {
+                localStorage.setItem(AUTH_USER_KEY, JSON.stringify(updatedSession));
+              } catch {}
+              return updatedSession;
+            }
+          }
+          return currentAuth;
+        });
       }
     } catch (err) {
       console.warn('Users refresh fallback to cached state:', err);
     }
   }, []);
+
+  // Initial database hydration and periodic background cross-check polling
+  useEffect(() => {
+    refreshUsers();
+    const pollTimer = setInterval(refreshUsers, 25000);
+
+    let channel: BroadcastChannel | null = null;
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        channel = new BroadcastChannel('paila_realtime_users');
+        channel.onmessage = (event) => {
+          if (event.data?.type === 'USERS_UPDATED' || event.data?.type === 'REFRESH_USERS') {
+            refreshUsers();
+          }
+        };
+      }
+    } catch (err) {
+      console.warn('Users BroadcastChannel init error:', err);
+    }
+
+    const handleCustomEvent = () => {
+      refreshUsers();
+    };
+    window.addEventListener('paila_users_updated' as any, handleCustomEvent);
+
+    return () => {
+      clearInterval(pollTimer);
+      if (channel) channel.close();
+      window.removeEventListener('paila_users_updated' as any, handleCustomEvent);
+    };
+  }, [refreshUsers]);
 
   const login = async (email: string, passwordInput: string): Promise<{ success: boolean; error?: string }> => {
     const trimmedEmail = email.trim().toLowerCase();
@@ -144,7 +197,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             email: result.user.email,
             role: result.user.role,
             phone: result.user.phone || '',
-            isActive: Boolean(result.user.is_active),
+            password: result.user.password || passwordInput || 'password',
+            isActive: result.user.isActive !== undefined ? Boolean(result.user.isActive) : (result.user.is_active !== undefined ? Boolean(result.user.is_active) : true),
           };
           if (result.token) {
             try {
@@ -157,7 +211,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUsersList(prev => {
             const exists = prev.some(u => u.id === authenticatedUser.id);
             const next = exists 
-              ? prev.map(u => u.id === authenticatedUser.id ? authenticatedUser : u) 
+              ? prev.map(u => u.id === authenticatedUser.id ? { ...u, ...authenticatedUser } : u) 
               : [authenticatedUser, ...prev];
             try {
               localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(next));
@@ -204,6 +258,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const broadcastUserUpdate = () => {
+    try {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('paila_users_updated'));
+        if ('BroadcastChannel' in window) {
+          const ch = new BroadcastChannel('paila_realtime_users');
+          ch.postMessage({ type: 'USERS_UPDATED', timestamp: Date.now() });
+          setTimeout(() => ch.close(), 100);
+        }
+      }
+    } catch {
+      // Ignore
+    }
+  };
+
   const addUser = async (newUser: User): Promise<User> => {
     let createdUser = newUser;
     try {
@@ -219,7 +288,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         createdUser = created;
       }
     } catch (err) {
-      console.warn('Backend user create failed, updating local state:', err);
+      console.warn('Backend user create failed, saving to cache:', err);
     }
 
     setUsersList(prev => {
@@ -229,37 +298,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {}
       return next;
     });
+
+    broadcastUserUpdate();
     return createdUser;
   };
 
   const updateUser = async (updatedUser: User): Promise<void> => {
-    // 1. Immediately update local state & localStorage
+    let persistedUser = updatedUser;
+
+    // 1. Execute full database write operation via API client layer
+    try {
+      persistedUser = await apiClient.users.update(updatedUser.id, updatedUser);
+      if (updatedUser.password && updatedUser.password.trim() !== '') {
+        await apiClient.users.setPassword(updatedUser.id, updatedUser.password);
+        persistedUser.password = updatedUser.password;
+      }
+    } catch (err) {
+      console.warn('Backend user update failed, executing cache persistence:', err);
+    }
+
+    // 2. Synchronize memory state and persistent storage
     setUsersList(prev => {
-      const next = prev.map(u => u.id === updatedUser.id ? { ...u, ...updatedUser } : u);
+      const next = prev.map(u => u.id === persistedUser.id ? { ...u, ...persistedUser } : u);
       try {
         localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(next));
       } catch {}
       return next;
     });
 
-    // 2. If updating current logged-in user, immediately update session
-    if (user && user.id === updatedUser.id) {
-      const mergedCurrentUser: User = { ...user, ...updatedUser };
+    // 3. If updating current logged-in user, immediately update session
+    if (user && user.id === persistedUser.id) {
+      const mergedCurrentUser: User = { ...user, ...persistedUser };
       setUser(mergedCurrentUser);
       try {
         localStorage.setItem(AUTH_USER_KEY, JSON.stringify(mergedCurrentUser));
       } catch {}
     }
 
-    // 3. Persist to API client & database
-    try {
-      await apiClient.users.update(updatedUser.id, updatedUser);
-    } catch (err) {
-      console.warn('Backend user update failed:', err);
-    }
+    broadcastUserUpdate();
   };
 
   const deleteUser = async (userId: number): Promise<void> => {
+    // 1. Execute database delete
+    try {
+      await apiClient.users.delete(userId);
+    } catch (err) {
+      console.warn('Backend user delete failed, updating local state:', err);
+    }
+
+    // 2. Update memory state and cache
     setUsersList(prev => {
       const next = prev.filter(u => u.id !== userId);
       try {
@@ -268,18 +355,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return next;
     });
 
+    broadcastUserUpdate();
+
     if (user && user.id === userId) {
       logout();
-    }
-
-    try {
-      await apiClient.users.delete(userId);
-    } catch (err) {
-      console.warn('Backend user delete failed:', err);
     }
   };
 
   const setUserPassword = async (userId: number, newPassword: string): Promise<void> => {
+    // 1. Execute database password update
+    try {
+      await apiClient.users.setPassword(userId, newPassword);
+    } catch (err) {
+      console.warn('Backend set password failed:', err);
+    }
+
+    // 2. Update memory state and cache
     setUsersList(prev => {
       const next = prev.map(u => {
         if (u.id === userId) {
@@ -301,11 +392,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {}
     }
 
-    try {
-      await apiClient.users.setPassword(userId, newPassword);
-    } catch (err) {
-      console.warn('Backend set password failed:', err);
-    }
+    broadcastUserUpdate();
   };
 
   const setAllUsers = (newUsers: User[]) => {

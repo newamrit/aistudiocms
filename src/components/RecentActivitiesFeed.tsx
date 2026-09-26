@@ -115,15 +115,22 @@ export default function RecentActivitiesFeed({ maxItems }: RecentActivitiesFeedP
   };
 
   const formatRelativeTime = (timestamp: string) => {
-    const diff = Date.now() - new Date(timestamp).getTime();
-    const seconds = Math.floor(diff / 1000);
-    if (seconds < 60) return 'Just now';
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    return `${days}d ago`;
+    if (!timestamp) return 'Just now';
+    try {
+      const time = new Date(timestamp).getTime();
+      if (!Number.isFinite(time)) return 'Just now';
+      const diff = Math.max(0, Date.now() - time);
+      const seconds = Math.floor(diff / 1000);
+      if (seconds < 60) return 'Just now';
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return `${minutes}m ago`;
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}h ago`;
+      const days = Math.floor(hours / 24);
+      return `${Number.isFinite(days) ? days : 1}d ago`;
+    } catch {
+      return 'Just now';
+    }
   };
 
   return (
@@ -261,10 +268,10 @@ export default function RecentActivitiesFeed({ maxItems }: RecentActivitiesFeedP
                     )}
 
                     {/* Amount Tag */}
-                    {activity.metadata?.amount && (
+                    {activity.metadata?.amount !== undefined && Number.isFinite(Number(activity.metadata.amount)) && (
                       <span className="bg-emerald-50 text-emerald-700 font-semibold text-[10px] px-1.5 py-0.5 rounded flex items-center gap-0.5">
                         <DollarSign size={10} />
-                        NPR {activity.metadata.amount.toLocaleString()}
+                        NPR {Number(activity.metadata.amount).toLocaleString()}
                       </span>
                     )}
 
@@ -398,10 +405,10 @@ export default function RecentActivitiesFeed({ maxItems }: RecentActivitiesFeedP
                         <span className="font-medium text-slate-900">{selectedActivity.metadata.vendorName}</span>
                       </div>
                     )}
-                    {selectedActivity.metadata.amount && (
+                    {selectedActivity.metadata.amount !== undefined && Number.isFinite(Number(selectedActivity.metadata.amount)) && (
                       <div className="px-3 py-2 flex items-center justify-between">
                         <span className="text-slate-500">Transaction Value</span>
-                        <span className="font-bold text-emerald-700">NPR {selectedActivity.metadata.amount.toLocaleString()}</span>
+                        <span className="font-bold text-emerald-700">NPR {Number(selectedActivity.metadata.amount).toLocaleString()}</span>
                       </div>
                     )}
                     {selectedActivity.metadata.paymentMode && (

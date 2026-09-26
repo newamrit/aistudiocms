@@ -356,7 +356,7 @@ export default function Vendors() {
               {getCategoryIcon(item.cat)}
               <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">{item.label}</span>
             </div>
-            <p className="text-2xl font-bold text-slate-900 dark:text-white">{item.count}</p>
+            <p className="text-2xl font-bold text-slate-900 dark:text-white">{Number.isFinite(item.count) ? item.count : 0}</p>
           </button>
         ))}
       </div>

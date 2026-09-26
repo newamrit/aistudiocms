@@ -12,7 +12,8 @@ import {
   Phone, MapPin, Clock, AlertTriangle, AlertCircle, CheckCircle, Play,
   ArrowRight, Users, Mountain, Truck, UtensilsCrossed, Building2,
   Wallet, Plus, X, Check, MessageSquare, Navigation, Sun, Moon,
-  Sunrise, Sunset, ChevronRight, RefreshCw, Shield, Zap, LogOut, Camera, Upload, Image as ImageIcon, Trash2, Wifi, WifiOff, CloudOff, Mail
+  Sunrise, Sunset, ChevronRight, RefreshCw, Shield, Zap, LogOut, Camera, Upload, Image as ImageIcon, Trash2, Wifi, WifiOff, CloudOff, Mail, Activity,
+  Settings, Smartphone, Download, ShieldCheck, Volume2, VolumeX, HardDrive, ExternalLink, FileText, CheckCircle2, HelpCircle, Info
 } from 'lucide-react';
 import { useRef } from 'react';
 import { sounds } from '../utils/sounds';
@@ -22,7 +23,11 @@ import { initializeOfflineSupport } from '../utils/offlineDB';
 import { apiClient } from '../api/tourLeaderApi';
 import ThemeToggle from '../components/ThemeToggle';
 import DatabaseStatusBulbs from '../components/DatabaseStatusBulbs';
-import { PWAInstallPrompt } from '../components/PWAInstallPrompt';
+import SyncProgressBar from '../components/SyncProgressBar';
+import { PWAInstallPrompt, InstallGuideModal } from '../components/PWAInstallPrompt';
+import { usePWAInstall } from '../hooks/usePWAInstall';
+import OfflineSyncLog from '../components/OfflineSyncLog';
+import { testConnectivityPing } from '../utils/offlineSyncLog';
 
 type TourStatus = 'CONFIRMED' | 'IN_PROGRESS' | 'COMPLETED';
 type SwapType = 'HOTEL' | 'RESTAURANT' | 'VEHICLE' | 'ACTIVITY';
@@ -60,7 +65,72 @@ export default function TourLeaderPortal() {
   const { vendors } = useVendors();
   const { createAlert } = useAlerts();
   const { logActivity } = useActivities();
-  const [activeTab, setActiveTab] = useState<'cockpit' | 'contacts' | 'expenses' | 'swaps'>('cockpit');
+  const [activeTab, setActiveTab] = useState<'cockpit' | 'contacts' | 'expenses' | 'swaps' | 'settings'>('cockpit');
+
+  // PWA Install state
+  const { isInstallable, hasNativePrompt, isInstalled, isIOS, isAndroid, isMobile, install } = usePWAInstall();
+  const [showInstallGuideModal, setShowInstallGuideModal] = useState<boolean>(false);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(sounds.isEnabled());
+  const [isOnDuty, setIsOnDuty] = useState<boolean>(true);
+  const [isPingingDiagnostics, setIsPingingDiagnostics] = useState<boolean>(false);
+  const [pingDiagnosticsResult, setPingDiagnosticsResult] = useState<{ status: string; durationMs: number; time: string } | null>(null);
+
+  const handleToggleDuty = () => {
+    sounds.click();
+    const newStatus = !isOnDuty;
+    setIsOnDuty(newStatus);
+    if (newStatus) {
+      sounds.success();
+      showPortalToast('Tour Leader is now actively On Duty.', 'success');
+    } else {
+      sounds.warning();
+      showPortalToast('Tour Leader duty paused (Standby mode).', 'warning');
+    }
+  };
+
+  const handleTestDiagnosticsPing = async () => {
+    sounds.click();
+    setIsPingingDiagnostics(true);
+    try {
+      const res = await testConnectivityPing();
+      if (res.status === 'SUCCESS') {
+        sounds.success();
+        setPingDiagnosticsResult({
+          status: 'SUCCESS',
+          durationMs: res.durationMs,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        });
+        showPortalToast(`Gateway ping successful! Latency: ${res.durationMs}ms`, 'success');
+      } else {
+        sounds.warning();
+        setPingDiagnosticsResult({
+          status: 'FAILED',
+          durationMs: res.durationMs,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        });
+        showPortalToast(`Gateway ping failed: ${res.troubleshootingTip || 'Server unreachable'}`, 'warning');
+      }
+    } catch {
+      sounds.warning();
+      showPortalToast('Diagnostics ping error', 'warning');
+    } finally {
+      setIsPingingDiagnostics(false);
+    }
+  };
+
+  const handleSettingsInstallClick = async () => {
+    sounds.click();
+    if (hasNativePrompt) {
+      const outcome = await install();
+      if (outcome === 'accepted') {
+        sounds.success();
+        showPortalToast('Paila Leader PWA installed successfully!', 'success');
+        return;
+      }
+    }
+    // If iOS Safari or browser prompt not triggered, open instructions modal
+    setShowInstallGuideModal(true);
+  };
 
   // Sync users list from database on portal load
   useEffect(() => {
@@ -75,6 +145,7 @@ export default function TourLeaderPortal() {
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [showCallModal, setShowCallModal] = useState(false);
   const [showAlertModal, setShowAlertModal] = useState(false);
+  const [showSyncLogModal, setShowSyncLogModal] = useState(false);
   const [activityViewLimit, setActivityViewLimit] = useState<number>(5);
 
   // Emergency Alert Form State
@@ -85,6 +156,12 @@ export default function TourLeaderPortal() {
   const [alertLocation, setAlertLocation] = useState('');
   const [isSubmittingAlert, setIsSubmittingAlert] = useState(false);
   const [alertSuccessToast, setAlertSuccessToast] = useState<string | null>(null);
+  const [portalToast, setPortalToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' } | null>(null);
+
+  const showPortalToast = (message: string, type: 'success' | 'error' | 'warning' = 'success') => {
+    setPortalToast({ message, type });
+    setTimeout(() => setPortalToast(null), 5000);
+  };
 
   // Daily Status Update Form State
   const [dailyStatusType, setDailyStatusType] = useState<string>('All Safe & Well');
@@ -271,9 +348,9 @@ export default function TourLeaderPortal() {
   // Dynamic Speed-dial contacts
   const speedDialContacts = [
     ...(upcomingTour?.clientPhone ? [{
-      name: upcomingTour.clientName.split(' ')[0] || 'Client',
+      name: (upcomingTour.clientName || 'Client').split(' ')[0] || 'Client',
       phone: upcomingTour.clientPhone,
-      role: `Client: ${upcomingTour.clientName}`,
+      role: `Client: ${upcomingTour.clientName || 'Valued Client'}`,
       icon: <Users size={20} />,
       color: 'bg-blue-500'
     }] : []),
@@ -292,9 +369,9 @@ export default function TourLeaderPortal() {
       color: 'bg-paila-blue'
     },
     ...(primaryOps ? [{
-      name: primaryOps.name.split(' ')[0],
+      name: (primaryOps.name || 'Operations').split(' ')[0] || 'Operations',
       phone: primaryOps.phone || settings.phone || '+977-1-4123456',
-      role: `${primaryOps.name} (Operations)`,
+      role: `${primaryOps.name || 'Operations Team'} (Operations)`,
       icon: <Truck size={20} />,
       color: 'bg-emerald-600'
     }] : []),
@@ -406,7 +483,8 @@ export default function TourLeaderPortal() {
       setShowStatusModal(false);
     } catch (err) {
       console.error('Failed to change tour status:', err);
-      alert('Failed to update tour status. Please try again.');
+      sounds.warning();
+      showPortalToast('Failed to update tour status. Please try again.', 'error');
     } finally {
       setIsSubmittingStatusChange(false);
     }
@@ -442,7 +520,8 @@ export default function TourLeaderPortal() {
   const handleSubmitDailyStatusUpdate = async () => {
     if (!user) return;
     if (!dailyStatusDescription.trim()) {
-      alert('Please enter a description or notes for the daily update.');
+      sounds.warning();
+      showPortalToast('Please enter a description or notes for the daily update.', 'warning');
       return;
     }
 
@@ -452,8 +531,8 @@ export default function TourLeaderPortal() {
       const targetTour = upcomingTour || bookings.find(b => b.assignedTourOperatorId === user.id) || bookings[0];
       const finalLoc = dailyStatusLocation.trim() || targetTour?.itineraryDays?.find(d => d.dayNumber === selectedDayNumber)?.overnightLocation || `Day ${selectedDayNumber} Checkpoint`;
 
-      // 1. Add to local tour activity feed
-      addActivity({
+      // 1. Add to field activity feed (synced to database and live polled across admin)
+      await addActivity({
         type: 'CHECK_IN',
         tourLeaderId: user.id,
         tourLeaderName: user.name,
@@ -469,7 +548,7 @@ export default function TourLeaderPortal() {
           weather: dailyStatusWeather,
           notes: finalDesc
         },
-        priority: dailyStatusType === 'Minor Issue' ? 'MEDIUM' : 'LOW'
+        priority: (dailyStatusType === 'Emergency / Evacuation' || dailyStatusType === 'Major Delay / Roadblock') ? 'HIGH' : dailyStatusType === 'Minor Issue' ? 'MEDIUM' : 'LOW'
       });
 
       // 2. Log to Super Admin recent activities audit stream
@@ -477,7 +556,7 @@ export default function TourLeaderPortal() {
         type: 'FIELD_CHECKPOINT',
         category: 'OPERATIONS',
         title: `📍 Day ${selectedDayNumber} Check-In: ${dailyStatusType}`,
-        description: finalDesc,
+        description: `${user.name}: ${finalDesc} (Location: ${finalLoc})`,
         actor: {
           name: user.name,
           email: user.email,
@@ -492,13 +571,39 @@ export default function TourLeaderPortal() {
         },
       });
 
+      // 3. Update target booking note and status history
+      if (targetTour) {
+        const updateNote = `[Day ${selectedDayNumber} Check-In: ${dailyStatusType}] ${finalDesc} (Location: ${finalLoc}, Weather: ${dailyStatusWeather})`;
+        updateBooking(targetTour.id, {
+          notes: targetTour.notes ? `${targetTour.notes}\n${updateNote}` : updateNote,
+        });
+      }
+
+      // 4. If severe issue, also push to Emergency Alerts system
+      if (dailyStatusType === 'Emergency / Evacuation' || dailyStatusType === 'Major Delay / Roadblock') {
+        await createAlert({
+          booking_id: targetTour ? targetTour.id : null,
+          tour_leader_id: user.id,
+          tour_leader_name: user.name,
+          tour_leader_phone: user.phone || '+977-9841234567',
+          booking_code: targetTour?.bookingCode,
+          client_name: targetTour?.clientName,
+          alert_type: dailyStatusType === 'Emergency / Evacuation' ? 'MEDICAL' : 'HIGHWAY_BLOCK',
+          severity: dailyStatusType === 'Emergency / Evacuation' ? 'CRITICAL' : 'HIGH',
+          title: `Field Update Alert: ${dailyStatusType} (Day ${selectedDayNumber})`,
+          description: finalDesc,
+          location: finalLoc,
+        });
+      }
+
       sounds.success();
       setShowDailyStatusModal(false);
-      setAlertSuccessToast(`Day ${selectedDayNumber} Update "${dailyStatusType}" recorded with field notes!`);
+      setAlertSuccessToast(`Day ${selectedDayNumber} Update "${dailyStatusType}" recorded and synchronized with Admin Console!`);
       setTimeout(() => setAlertSuccessToast(null), 5000);
     } catch (err) {
       console.error('Failed to submit daily update:', err);
-      alert('Failed to submit daily update. Please try again.');
+      sounds.warning();
+      showPortalToast('Failed to submit daily update. Please try again.', 'error');
     } finally {
       setIsSubmittingDailyStatus(false);
     }
@@ -508,17 +613,20 @@ export default function TourLeaderPortal() {
     if (!upcomingTour || !user) return;
 
     if (!swapOriginalVendorName.trim()) {
-      alert('Please select or specify the original vendor to be swapped.');
+      sounds.warning();
+      showPortalToast('Please select or specify the original vendor to be swapped.', 'warning');
       return;
     }
 
     if (!swapNewVendorName.trim()) {
-      alert('Please enter or choose the new vendor name.');
+      sounds.warning();
+      showPortalToast('Please enter or choose the new vendor name.', 'warning');
       return;
     }
 
     if (!swapReason.trim()) {
-      alert('Please provide the operational reason for this vendor swap.');
+      sounds.warning();
+      showPortalToast('Please provide the operational reason for this vendor swap.', 'warning');
       return;
     }
 
@@ -632,7 +740,8 @@ export default function TourLeaderPortal() {
       setShowSwapModal(false);
     } catch (err) {
       console.error('Failed to authorize vendor swap:', err);
-      alert('Failed to authorize vendor swap. Please try again.');
+      sounds.warning();
+      showPortalToast('Failed to authorize vendor swap. Please try again.', 'error');
     } finally {
       setIsSubmittingSwap(false);
     }
@@ -643,12 +752,14 @@ export default function TourLeaderPortal() {
 
     const parsedAmount = parseFloat(expenseAmount);
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
-      alert('Please enter a valid expense amount in NPR.');
+      sounds.warning();
+      showPortalToast('Please enter a valid expense amount in NPR.', 'warning');
       return;
     }
 
     if (!expenseDescription.trim()) {
-      alert('Please enter a description for the expense.');
+      sounds.warning();
+      showPortalToast('Please enter a description for the expense.', 'warning');
       return;
     }
 
@@ -752,7 +863,8 @@ export default function TourLeaderPortal() {
       setReceiptPreview(null);
     } catch (err) {
       console.error('Failed to submit expense:', err);
-      alert('Failed to record expense. Please try again.');
+      sounds.warning();
+      showPortalToast('Failed to record expense. Please try again.', 'error');
     } finally {
       setIsSubmittingExpense(false);
     }
@@ -769,12 +881,14 @@ export default function TourLeaderPortal() {
     if (file) {
       // Validate file type
       if (!file.type.startsWith('image/')) {
-        alert('Please upload an image file (JPG, PNG, etc.)');
+        sounds.warning();
+        showPortalToast('Please upload an image file (JPG, PNG, etc.)', 'warning');
         return;
       }
       // Validate file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
-        alert('File size must be less than 5MB');
+        sounds.warning();
+        showPortalToast('File size must be less than 5MB', 'warning');
         return;
       }
       setReceiptFile(file);
@@ -871,7 +985,8 @@ export default function TourLeaderPortal() {
   const handleSendEmergencyAlert = async () => {
     if (!user) return;
     if (!alertDescription.trim()) {
-      alert('Please enter a description for the emergency alert.');
+      sounds.warning();
+      showPortalToast('Please enter a description for the emergency alert.', 'warning');
       return;
     }
 
@@ -939,7 +1054,8 @@ export default function TourLeaderPortal() {
       setTimeout(() => setAlertSuccessToast(null), 6000);
     } catch (err) {
       console.error('Failed to create alert:', err);
-      alert('Failed to send alert. Please try again.');
+      sounds.warning();
+      showPortalToast('Failed to send alert. Please try again.', 'error');
     } finally {
       setIsSubmittingAlert(false);
     }
@@ -950,61 +1066,30 @@ export default function TourLeaderPortal() {
   return (
     <div className="w-full min-h-screen bg-slate-50 flex flex-col">
       {/* Mobile Header */}
-      <header className="bg-gradient-to-br from-[#012871] to-[#0a3d99] text-white sticky top-0 z-30 shadow-xl">
-        <div className="px-3.5 py-3 sm:px-5 sm:py-4">
-          <div className="flex items-center justify-between gap-2">
+      <header className="bg-gradient-to-br from-[#012871] via-[#013596] to-[#012871] text-white sticky top-0 z-30 shadow-xl relative">
+        <div className="px-4 py-3 sm:px-5 sm:py-3.5">
+          <div className="flex items-center justify-between gap-3">
             {/* User Profile / Tour Leader Info */}
-            <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
+            <div className="flex items-center gap-1.5 sm:gap-3.5 min-w-0 flex-1">
               <div className="relative shrink-0">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-[#f35500] to-[#d94b00] rounded-full flex items-center justify-center font-bold text-sm sm:text-base shadow-md shadow-orange-500/30">
-                  {user.name.split(' ').map(n => n[0]).join('')}
+                <div className="w-9 h-9 sm:w-11 sm:h-11 bg-gradient-to-br from-[#f35500] to-[#d94b00] rounded-full flex items-center justify-center font-bold text-xs sm:text-base text-white shadow-md shadow-orange-500/30">
+                  {(user?.name || 'Leader').split(' ').filter(Boolean).map(n => n[0]).join('') || 'TL'}
                 </div>
-                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 sm:w-3.5 sm:h-3.5 bg-emerald-500 rounded-full ring-2 ring-[#012871]"></div>
+                <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full ring-2 ring-[#012871] ${isOnDuty ? 'bg-emerald-500' : 'bg-amber-400'}`}></div>
               </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <p className="text-[10px] sm:text-xs text-blue-200 font-medium uppercase tracking-wider">Tour Leader</p>
-                  <span className="inline-flex sm:hidden items-center gap-1 text-[9px] font-semibold text-emerald-300 bg-emerald-500/20 px-1.5 py-0.5 rounded-full">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                    Duty
-                  </span>
-                </div>
-                <p className="text-sm sm:text-base font-bold truncate">{user.name.split(' ')[0]}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-[9px] sm:text-xs text-blue-200 font-bold uppercase tracking-wider leading-none mb-0.5">Tour Leader</p>
+                <p className="text-sm sm:text-base font-extrabold truncate text-white leading-tight">{(user?.name || 'Leader')}</p>
               </div>
             </div>
 
-            {/* Right Header Actions: Compact & completely in-frame on all screen sizes */}
-            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-              {/* Offline/Sync Status Indicator */}
-              {isOffline && (
-                <div className="flex items-center gap-1 bg-red-500/20 border border-red-400/50 px-2 py-1 rounded-full animate-pulse text-[10px] sm:text-xs font-semibold text-red-200">
-                  <WifiOff size={12} className="text-red-300" />
-                  <span className="hidden xs:inline">Offline</span>
-                </div>
-              )}
-              
-              {/* Sync Queue Indicator */}
-              {syncStats.total > 0 && (
-                <button
-                  onClick={syncNow}
-                  disabled={syncing || isOffline}
-                  className="flex items-center gap-1 bg-amber-500/20 border border-amber-400/50 px-2 py-1 rounded-full hover:bg-amber-500/30 transition-colors disabled:opacity-50 text-[10px] sm:text-xs font-semibold text-amber-200"
-                  title={syncing ? 'Syncing...' : `${syncStats.total} pending sync`}
-                >
-                  {syncing ? (
-                    <RefreshCw size={12} className="text-amber-300 animate-spin" />
-                  ) : (
-                    <CloudOff size={12} className="text-amber-300" />
-                  )}
-                  <span>{syncStats.total}</span>
-                </button>
-              )}
+            {/* Right Header Actions: Clean, uncluttered, DB & Sync prominently visible */}
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              {/* Global Non-Intrusive Sync Progress Bar */}
+              <SyncProgressBar theme="dark" showBadge={false} />
 
-              {/* PWA Install Button */}
-              <PWAInstallPrompt bannerVariant="compact" />
-
-              {/* Two Glowing Bulbs for Database & Cloud Sync */}
-              <div className="shrink-0 scale-90 sm:scale-100 origin-right">
+              {/* Two Glowing Bulbs for Database & Cloud Sync (Prominently Visible) */}
+              <div className="shrink-0 origin-right">
                 <DatabaseStatusBulbs
                   theme="dark"
                   interactive={true}
@@ -1014,49 +1099,33 @@ export default function TourLeaderPortal() {
                 />
               </div>
 
-              {/* Clock (Visible on Tablet/Desktop to save space on mobile) */}
-              <div className="hidden md:flex items-center gap-1.5 bg-white/10 px-2.5 py-1.5 rounded-full text-xs font-semibold">
+              {/* Clock (Visible on Tablet/Desktop) */}
+              <div className="hidden md:flex items-center gap-1.5 bg-white/10 px-2.5 py-1.5 rounded-full text-xs font-semibold text-blue-100 border border-white/15">
                 <Clock size={13} />
                 <span>{currentTime}</span>
               </div>
 
-              {/* On Duty Pill (Visible on sm screens and up) */}
-              <div className="hidden sm:flex items-center gap-1.5 bg-white/10 px-3 py-1.5 rounded-full text-xs font-semibold">
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                <span>On Duty</span>
-              </div>
-
-              {/* Sync / Refresh Button */}
-              <button
-                type="button"
-                onClick={async () => {
-                  sounds.click();
-                  await refreshUsers();
-                  if (syncStats.total > 0 && !isOffline) {
-                    syncNow();
-                  }
-                }}
-                className="p-1.5 sm:p-2 hover:bg-white/15 active:bg-white/20 rounded-xl transition-colors text-white"
-                title="Sync & Refresh"
-                aria-label="Sync & Refresh"
-              >
-                <RefreshCw size={17} className={syncing ? 'animate-spin' : ''} />
-              </button>
-
               {/* Dark/Light Mode Toggle */}
               <div className="shrink-0">
-                <ThemeToggle variant="button" className="!p-1.5 sm:!p-2 !bg-white/10 !border-white/20 !text-white hover:!bg-white/20 !rounded-xl" />
+                <ThemeToggle variant="button" className="!p-1 sm:!p-2 !bg-white/10 !border-white/20 !text-white hover:!bg-white/20 !rounded-full cursor-pointer" />
               </div>
 
-              {/* Logout Button */}
-              <button 
+              {/* Settings Shortcut Button */}
+              <button
                 type="button"
-                onClick={logout}
-                className="p-1.5 sm:p-2 hover:bg-red-500/30 active:bg-red-500/40 bg-red-500/15 rounded-xl transition-colors text-red-200 hover:text-white border border-red-400/30 shrink-0"
-                title="Logout"
-                aria-label="Logout"
+                onClick={() => {
+                  sounds.click();
+                  setActiveTab('settings');
+                }}
+                className={`p-1 sm:p-2 rounded-full transition-all cursor-pointer shrink-0 ${
+                  activeTab === 'settings'
+                    ? 'bg-[#f35500] text-white shadow-md'
+                    : 'bg-white/10 hover:bg-white/20 text-white border border-white/20'
+                }`}
+                title="Settings & Diagnostics"
+                aria-label="Settings"
               >
-                <LogOut size={17} />
+                <Settings size={16} className="sm:size-[18px]" />
               </button>
             </div>
           </div>
@@ -1082,7 +1151,7 @@ export default function TourLeaderPortal() {
               <p className="text-lg font-bold truncate">{upcomingTour.clientName}</p>
               <div className="flex items-center gap-4 mt-3 text-sm text-blue-100 font-medium">
                 <span className="flex items-center gap-1.5"><MapPin size={14} /> {upcomingTour.packageName || 'Custom Tour'}</span>
-                <span className="flex items-center gap-1.5"><Users size={14} /> {upcomingTour.paxCount} pax</span>
+                <span className="flex items-center gap-1.5"><Users size={14} /> {Number.isFinite(Number(upcomingTour.paxCount)) ? upcomingTour.paxCount : 1} pax</span>
               </div>
             </div>
           </div>
@@ -1107,17 +1176,33 @@ export default function TourLeaderPortal() {
 
       {/* Main Content */}
       <main className="flex-1 px-5 py-6 space-y-6 pb-28">
-        {/* Mobile PWA Install Banner */}
-        <PWAInstallPrompt bannerVariant="banner" />
+        {/* In-App Notifications Banner */}
+        {portalToast && (
+          <div className={`${
+            portalToast.type === 'error' ? 'bg-red-600 shadow-red-600/20' :
+            portalToast.type === 'warning' ? 'bg-amber-600 shadow-amber-600/20' :
+            'bg-emerald-600 shadow-emerald-600/20'
+          } text-white p-4 rounded-2xl shadow-lg flex items-center justify-between animate-fade-in`}>
+            <div className="flex items-center gap-3">
+              {portalToast.type === 'error' ? <AlertCircle size={20} className="shrink-0" /> :
+               portalToast.type === 'warning' ? <AlertTriangle size={20} className="shrink-0" /> :
+               <CheckCircle size={20} className="shrink-0" />}
+              <p className="text-sm font-semibold">{portalToast.message}</p>
+            </div>
+            <button onClick={() => setPortalToast(null)} className="p-1 hover:bg-black/20 rounded-lg cursor-pointer">
+              <X size={16} />
+            </button>
+          </div>
+        )}
 
-        {/* Success Alert Banner */}
-        {alertSuccessToast && (
+        {/* Success Alert Banner (Legacy compatibility) */}
+        {!portalToast && alertSuccessToast && (
           <div className="bg-emerald-600 text-white p-4 rounded-2xl shadow-lg shadow-emerald-600/20 flex items-center justify-between animate-fade-in">
             <div className="flex items-center gap-3">
               <CheckCircle size={20} className="shrink-0" />
               <p className="text-sm font-semibold">{alertSuccessToast}</p>
             </div>
-            <button onClick={() => setAlertSuccessToast(null)} className="p-1 hover:bg-emerald-700 rounded-lg">
+            <button onClick={() => setAlertSuccessToast(null)} className="p-1 hover:bg-emerald-700 rounded-lg cursor-pointer">
               <X size={16} />
             </button>
           </div>
@@ -1145,7 +1230,13 @@ export default function TourLeaderPortal() {
                   <div className="absolute top-5 left-10 right-10 h-1 bg-slate-200">
                     <div
                       className="h-full bg-paila-orange transition-all duration-500"
-                      style={{ width: `${(currentStatusIndex / (statusSteps.length - 1)) * 100}%` }}
+                      style={{
+                        width: `${
+                          currentStatusIndex > 0 && statusSteps.length > 1
+                            ? Math.min(100, Math.max(0, Math.round((currentStatusIndex / (statusSteps.length - 1)) * 100)))
+                            : 0
+                        }%`,
+                      }}
                     />
                   </div>
                   
@@ -1373,7 +1464,7 @@ export default function TourLeaderPortal() {
                                       )}
                                       {vendor.agreedCost > 0 && (
                                         <span className="text-slate-500">
-                                          Cost: <span className="font-semibold text-slate-800">NPR {vendor.agreedCost.toLocaleString()}</span>
+                                          Cost: <span className="font-semibold text-slate-800">NPR {(Number.isFinite(Number(vendor.agreedCost)) ? Number(vendor.agreedCost) : 0).toLocaleString()}</span>
                                         </span>
                                       )}
                                     </div>
@@ -1546,7 +1637,9 @@ export default function TourLeaderPortal() {
                               </span>
                               <span className="text-[11px] font-medium text-slate-500 flex items-center gap-1">
                                 <Clock size={11} />
-                                {act.timestamp ? act.timestamp.split(' ')[1]?.slice(0, 5) || act.timestamp : 'Just now'}
+                                {act.timestamp && typeof act.timestamp === 'string' && act.timestamp.includes(' ')
+                                  ? act.timestamp.split(' ')[1]?.slice(0, 5) || act.timestamp
+                                  : (act.timestamp || 'Just now')}
                               </span>
                             </div>
 
@@ -1899,7 +1992,7 @@ export default function TourLeaderPortal() {
             {/* Expense Summary */}
             <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-lg">
               <p className="text-sm text-green-100 mb-2 font-semibold">Total Spot Expenses {upcomingTour && `(${upcomingTour.bookingCode})`}</p>
-              <p className="text-3xl font-bold">NPR {visibleExpenses.reduce((s, e) => s + e.amount, 0).toLocaleString()}</p>
+              <p className="text-3xl font-bold">NPR {visibleExpenses.reduce((s, e) => s + (Number.isFinite(Number(e.amount)) ? Number(e.amount) : 0), 0).toLocaleString()}</p>
               <p className="text-sm text-green-100 mt-2 font-medium">{visibleExpenses.length} disbursements recorded for this assigned tour</p>
             </div>
 
@@ -1941,7 +2034,7 @@ export default function TourLeaderPortal() {
                           )}
                         </div>
                       </div>
-                      <p className="text-lg font-bold text-green-700 shrink-0">NPR {exp.amount.toLocaleString()}</p>
+                      <p className="text-lg font-bold text-green-700 shrink-0">NPR {(Number.isFinite(Number(exp.amount)) ? Number(exp.amount) : 0).toLocaleString()}</p>
                     </div>
                     {/* Receipt thumbnail */}
                     {exp.hasReceipt && exp.receiptPreview && (
@@ -2036,16 +2129,374 @@ export default function TourLeaderPortal() {
             </div>
           </div>
         )}
+
+        {/* Tab: Settings & PWA Installation */}
+        {activeTab === 'settings' && (
+          <div className="space-y-6 animate-fade-in pb-4">
+            {/* Header Title */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-black text-paila-blue flex items-center gap-2">
+                  <Settings size={22} className="text-paila-orange" />
+                  Field Operator Settings
+                </h3>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                  App preferences, offline storage, diagnostics & mobile installation
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 px-3 py-1 bg-blue-50 border border-blue-200 rounded-full text-xs font-bold text-paila-blue">
+                <Clock size={13} />
+                <span>{currentTime}</span>
+              </div>
+            </div>
+
+            {/* 1. HERO PWA INSTALLATION CARD (Put "Install Now" inside settings tab) */}
+            <div className="bg-gradient-to-br from-[#012871] via-[#013596] to-[#011f58] rounded-3xl p-5 sm:p-6 text-white shadow-xl border border-blue-400/30 relative overflow-hidden">
+              {/* Glowing decorative elements */}
+              <div className="absolute -top-12 -right-12 w-48 h-48 bg-[#f35500]/25 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-blue-400/20 rounded-full blur-2xl pointer-events-none" />
+
+              <div className="relative z-10 space-y-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#f35500] to-[#c44300] flex items-center justify-center shrink-0 shadow-lg shadow-orange-600/30 border border-white/20">
+                      <Smartphone size={28} className="text-white" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="text-lg font-black tracking-tight text-white">
+                          Paila Leader App
+                        </h4>
+                        <span className="bg-[#f35500] text-white text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
+                          Mobile PWA
+                        </span>
+                      </div>
+                      <p className="text-xs text-blue-100/90 mt-1">
+                        {isInstalled 
+                          ? 'Installed & running in standalone mode on this device' 
+                          : isIOS 
+                          ? 'Add to iPhone / iPad home screen for 100% offline trail access' 
+                          : 'Install as native Android / Chrome app with 1-tap launcher'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Status Badge */}
+                  {isInstalled ? (
+                    <span className="px-3 py-1 bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-xs font-bold rounded-full flex items-center gap-1.5 shrink-0">
+                      <CheckCircle2 size={13} className="text-emerald-400" /> Installed
+                    </span>
+                  ) : (
+                    <span className="px-3 py-1 bg-amber-500/20 border border-amber-400/40 text-amber-300 text-xs font-bold rounded-full flex items-center gap-1.5 shrink-0 animate-pulse">
+                      <Download size={13} /> Ready to Install
+                    </span>
+                  )}
+                </div>
+
+                {/* Core Offline Benefits Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+                  <div className="p-2.5 rounded-xl bg-white/10 backdrop-blur-xs border border-white/10 flex items-center gap-2">
+                    <WifiOff size={15} className="text-emerald-300 shrink-0" />
+                    <span className="text-[11px] font-semibold text-slate-100">100% Offline Mode</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-white/10 backdrop-blur-xs border border-white/10 flex items-center gap-2">
+                    <ShieldCheck size={15} className="text-orange-300 shrink-0" />
+                    <span className="text-[11px] font-semibold text-slate-100">Instant SOS Alert</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-white/10 backdrop-blur-xs border border-white/10 flex items-center gap-2">
+                    <HardDrive size={15} className="text-cyan-300 shrink-0" />
+                    <span className="text-[11px] font-semibold text-slate-100">IndexedDB Cache</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-white/10 backdrop-blur-xs border border-white/10 flex items-center gap-2">
+                    <Zap size={15} className="text-amber-300 shrink-0" />
+                    <span className="text-[11px] font-semibold text-slate-100">Zero Browser Bars</span>
+                  </div>
+                </div>
+
+                {/* Primary Action Button: "Install Now" */}
+                <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleSettingsInstallClick}
+                    className="flex-1 py-3 px-5 bg-gradient-to-r from-[#f35500] via-[#ff6819] to-[#d94b00] hover:from-[#e04e00] hover:to-[#c04200] text-white font-extrabold text-sm rounded-2xl shadow-xl shadow-orange-600/35 flex items-center justify-center gap-2.5 active:scale-98 transition-all cursor-pointer border border-white/20"
+                  >
+                    <Download size={18} className="animate-bounce" />
+                    <span>{isInstalled ? 'Reinstall or View Setup Guide' : 'Install Now'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sounds.click();
+                      setShowInstallGuideModal(true);
+                    }}
+                    className="py-3 px-4 bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-xs rounded-2xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <HelpCircle size={15} />
+                    <span>Install Instructions</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. OPERATOR PROFILE & DUTY STATUS CARD (Put On Duty inside settings) */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                  <Users size={16} className="text-paila-blue" />
+                  Tour Leader & Duty Status
+                </h4>
+                {/* On Duty Status Badge */}
+                <div className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 ${
+                  isOnDuty 
+                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
+                    : 'bg-amber-100 text-amber-800 border border-amber-300'
+                }`}>
+                  <span className={`w-2 h-2 rounded-full ${isOnDuty ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                  <span>{isOnDuty ? 'Active On Duty' : 'Standby Mode'}</span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#f35500] to-[#b33e00] text-white flex items-center justify-center text-xl font-black shadow-md">
+                    {(user?.name || 'Tour Leader').split(' ').filter(Boolean).map(n => n[0]).slice(0, 2).join('')}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-base font-bold text-slate-900 truncate">{user?.name || 'Tour Leader'}</p>
+                    <p className="text-xs text-slate-500 font-medium truncate mt-0.5">{user?.email}</p>
+                    {upcomingTour ? (
+                      <div className="flex items-center gap-1.5 mt-1 text-xs font-semibold text-emerald-700">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        <span>Assigned: {upcomingTour.bookingCode} ({upcomingTour.clientName})</span>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-amber-600 font-medium mt-1">No active tour assigned</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Duty Toggle Switch */}
+                <div className="shrink-0 flex flex-col items-end gap-1">
+                  <button
+                    type="button"
+                    onClick={handleToggleDuty}
+                    className={`w-14 h-7 rounded-full transition-colors relative cursor-pointer ${
+                      isOnDuty ? 'bg-emerald-500' : 'bg-slate-300'
+                    }`}
+                    title={isOnDuty ? 'Switch to Standby' : 'Set Active On Duty'}
+                    aria-label="Toggle Tour Leader Duty Status"
+                  >
+                    <div className={`w-6 h-6 rounded-full bg-white absolute top-0.5 shadow-md transition-transform ${
+                      isOnDuty ? 'left-7.5' : 'left-0.5'
+                    }`} />
+                  </button>
+                  <span className="text-[10px] font-bold text-slate-400">
+                    {isOnDuty ? 'Tap to Pause' : 'Tap to Activate'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Local Time (NPT)</span>
+                  <span className="font-mono font-bold text-slate-800 text-sm mt-0.5 block">{currentTime}</span>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Network Connection</span>
+                  <span className={`font-bold text-sm mt-0.5 flex items-center gap-1.5 ${isOffline ? 'text-amber-600' : 'text-emerald-600'}`}>
+                    {isOffline ? <WifiOff size={14} /> : <Wifi size={14} />}
+                    {isOffline ? 'Offline' : 'Connected'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. CONNECTIVITY DIAGNOSIS CARD (Put Connectivity Diagnosis inside settings) */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                  <Zap size={16} className="text-amber-500" />
+                  Connectivity Diagnosis
+                </h4>
+                <span className="text-xs text-slate-400 font-medium">Gateway Health Check</span>
+              </div>
+
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                    isOffline ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
+                  }`}>
+                    {isOffline ? <WifiOff size={20} /> : <Wifi size={20} />}
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500 font-semibold uppercase">API Gateway Status</p>
+                    <p className="text-sm font-bold text-slate-900">
+                      {isOffline ? 'Offline (Cached IndexedDB Mode)' : 'Online (Direct Backend Link)'}
+                    </p>
+                    {pingDiagnosticsResult && (
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Last ping: <strong className="text-slate-800">{pingDiagnosticsResult.durationMs}ms</strong> at {pingDiagnosticsResult.time}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleTestDiagnosticsPing}
+                  disabled={isPingingDiagnostics}
+                  className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold rounded-xl shadow-sm flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-95 transition-all"
+                >
+                  <Zap size={14} className={isPingingDiagnostics ? 'animate-bounce text-amber-300' : ''} />
+                  <span>{isPingingDiagnostics ? 'Pinging...' : 'Run Connectivity Diagnosis'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 4. OFFLINE SYNC LOG & STORAGE CARD (Put Offline Sync Log inside settings) */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                  <Activity size={16} className="text-blue-600" />
+                  Offline Sync Log & Diagnostics
+                </h4>
+                <span className="text-xs text-slate-400 font-medium">IndexedDB Storage</span>
+              </div>
+
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                    syncStats.total > 0 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
+                  }`}>
+                    <HardDrive size={20} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500 font-semibold uppercase">Pending Offline Queue</p>
+                    <p className="text-base font-black text-slate-900">
+                      {syncStats.total} {syncStats.total === 1 ? 'record' : 'records'} queued
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={async () => {
+                    sounds.click();
+                    if (!isOffline && syncStats.total > 0) {
+                      syncNow();
+                    } else if (!isOffline) {
+                      await refreshUsers();
+                      sounds.success();
+                      showPortalToast('Database synced and verified with cloud.', 'success');
+                    } else {
+                      sounds.warning();
+                      showPortalToast('Device is offline. Queued items will sync automatically when signal restores.', 'warning');
+                    }
+                  }}
+                  disabled={syncing}
+                  className="px-3.5 py-2 bg-gradient-to-r from-[#f35500] to-[#d94b00] hover:from-[#e04e00] hover:to-[#c44300] text-white text-xs font-bold rounded-xl shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-95 transition-all"
+                >
+                  <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
+                  <span>{syncing ? 'Syncing...' : syncStats.total > 0 ? 'Sync Queue' : 'Test Sync'}</span>
+                </button>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    sounds.click();
+                    setShowSyncLogModal(true);
+                  }}
+                  className="flex-1 py-3 px-4 bg-blue-50 hover:bg-blue-100 text-paila-blue font-bold text-xs rounded-xl border border-blue-200 transition-colors flex items-center justify-center gap-2 cursor-pointer active:scale-98 shadow-xs"
+                >
+                  <Activity size={15} className="text-blue-600" />
+                  <span>Open Offline Sync Log & Audit Ledger</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 5. PREFERENCES & EMERGENCY DISPATCH */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-4">
+              <h4 className="text-sm font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                <Shield size={16} className="text-paila-orange" />
+                Preferences & Emergency Support
+              </h4>
+
+              {/* Sound Audio Cues Toggle */}
+              <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
+                    {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-slate-800">Audio Feedback & Cues</p>
+                    <p className="text-xs text-slate-500">Play confirmation and alert chimes on button taps</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (soundEnabled) {
+                      sounds.disable();
+                      setSoundEnabled(false);
+                    } else {
+                      sounds.enable();
+                      setSoundEnabled(true);
+                      sounds.toggleOn();
+                    }
+                  }}
+                  className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${
+                    soundEnabled ? 'bg-[#f35500]' : 'bg-slate-300'
+                  }`}
+                  aria-label="Toggle Sound Effects"
+                >
+                  <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${
+                    soundEnabled ? 'left-6.5' : 'left-0.5'
+                  }`} />
+                </button>
+              </div>
+
+              {/* 24/7 Ops Emergency Hotline */}
+              <div className="pt-2 flex flex-col sm:flex-row items-center gap-2.5">
+                <a
+                  href="tel:+97714412345"
+                  className="w-full sm:flex-1 py-2.5 px-4 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-xs rounded-xl border border-red-200 transition-colors flex items-center justify-center gap-2 active:scale-95"
+                >
+                  <Phone size={14} className="text-red-600 animate-pulse" />
+                  <span>Call 24/7 Kathmandu Ops: +977-1-4412345</span>
+                </a>
+              </div>
+
+              {/* Logout Button */}
+              <div className="pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    sounds.warning();
+                    logout();
+                  }}
+                  className="w-full py-3 px-4 bg-red-500/10 hover:bg-red-500/20 text-red-700 font-bold text-xs rounded-xl border border-red-300 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+                >
+                  <LogOut size={15} />
+                  <span>Log Out from Field Account</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] z-30 no-print safe-area-bottom">
-        <div className="grid grid-cols-4 max-w-7xl mx-auto">
+        <div className="grid grid-cols-5 max-w-7xl mx-auto">
           {[
-            { id: 'cockpit' as const, label: 'Cockpit', icon: <Navigation size={24} /> },
-            { id: 'contacts' as const, label: 'Contacts', icon: <Phone size={24} /> },
-            { id: 'expenses' as const, label: 'Expenses', icon: <Wallet size={24} /> },
-            { id: 'swaps' as const, label: 'Swaps', icon: <RefreshCw size={24} /> },
+            { id: 'cockpit' as const, label: 'Cockpit', icon: <Navigation size={20} /> },
+            { id: 'contacts' as const, label: 'Contacts', icon: <Phone size={20} /> },
+            { id: 'expenses' as const, label: 'Expenses', icon: <Wallet size={20} /> },
+            { id: 'swaps' as const, label: 'Swaps', icon: <RefreshCw size={20} /> },
+            { id: 'settings' as const, label: 'Settings', icon: <Settings size={20} /> },
           ].map(tab => (
             <button
               key={tab.id}
@@ -2053,15 +2504,15 @@ export default function TourLeaderPortal() {
                 sounds.click();
                 setActiveTab(tab.id);
               }}
-              className={`relative flex flex-col items-center gap-1.5 py-4 transition-all ${
-                activeTab === tab.id ? 'text-[#012871]' : 'text-slate-400 hover:text-slate-600'
+              className={`relative flex flex-col items-center gap-1 py-3 transition-all cursor-pointer ${
+                activeTab === tab.id ? 'text-[#012871] font-bold' : 'text-slate-400 hover:text-slate-600'
               }`}
             >
               {activeTab === tab.id && (
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-12 h-1 bg-[#f35500] rounded-b-full"></div>
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-10 h-1 bg-[#f35500] rounded-b-full"></div>
               )}
               {tab.icon}
-              <span className="text-xs font-semibold">{tab.label}</span>
+              <span className="text-[11px] font-semibold">{tab.label}</span>
             </button>
           ))}
         </div>
@@ -2539,7 +2990,7 @@ export default function TourLeaderPortal() {
                       <option value="">-- Select from Assigned Vendors --</option>
                       {tourAllocations.map(a => (
                         <option key={a.id} value={a.vendorName}>
-                          {a.vendorName} ({a.serviceType}) • NPR {a.agreedCost.toLocaleString()}
+                          {a.vendorName} ({a.serviceType}) • NPR {(Number.isFinite(Number(a.agreedCost)) ? Number(a.agreedCost) : 0).toLocaleString()}
                         </option>
                       ))}
                     </select>
@@ -2916,7 +3367,7 @@ export default function TourLeaderPortal() {
                             </p>
                             {receiptFile && (
                               <p className="text-[10px] opacity-80 font-medium">
-                                {(receiptFile.size / 1024).toFixed(1)} KB
+                                {(Number.isFinite(receiptFile?.size) && (receiptFile?.size ?? 0) > 0 ? (receiptFile.size / 1024).toFixed(1) : '0.0')} KB
                               </p>
                             )}
                           </div>
@@ -3243,6 +3694,21 @@ export default function TourLeaderPortal() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Offline Sync Log Modal */}
+      <OfflineSyncLog
+        isOpen={showSyncLogModal}
+        onClose={() => setShowSyncLogModal(false)}
+      />
+
+      {/* PWA Install Guide Modal for iOS / Android */}
+      {showInstallGuideModal && (
+        <InstallGuideModal
+          isIOS={isIOS}
+          isAndroid={isAndroid}
+          onClose={() => setShowInstallGuideModal(false)}
+        />
       )}
     </div>
   );

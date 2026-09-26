@@ -21,9 +21,9 @@ export default function AccountsPayable() {
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('BANK_TRANSFER');
   const [referenceNumber, setReferenceNumber] = useState('');
 
-  const totalAgreed = allocations.reduce((s, a) => s + a.agreedCost, 0);
-  const totalPaid = allocations.reduce((s, a) => s + a.amountPaid, 0);
-  const totalPending = totalAgreed - totalPaid;
+  const totalAgreed = allocations.reduce((s, a) => s + (Number.isFinite(Number(a.agreedCost)) ? Number(a.agreedCost) : 0), 0);
+  const totalPaid = allocations.reduce((s, a) => s + (Number.isFinite(Number(a.amountPaid)) ? Number(a.amountPaid) : 0), 0);
+  const totalPending = Math.max(0, totalAgreed - totalPaid);
   const pendingCount = allocations.filter(a => a.paymentStatus !== 'SETTLED').length;
 
   const filtered = allocations.filter(a => {
@@ -263,9 +263,9 @@ export default function AccountsPayable() {
               <tfoot>
                 <tr className="bg-slate-50 border-t-2 border-slate-200">
                   <td colSpan={3} className="px-5 py-3 text-sm font-semibold text-slate-700">TOTALS</td>
-                  <td className="px-5 py-3 text-sm font-bold text-slate-900">NPR {filtered.reduce((s, a) => s + a.agreedCost, 0).toLocaleString()}</td>
-                  <td className="px-5 py-3 text-sm font-bold text-green-700">NPR {filtered.reduce((s, a) => s + a.amountPaid, 0).toLocaleString()}</td>
-                  <td className="px-5 py-3 text-sm font-bold text-red-600">NPR {filtered.reduce((s, a) => s + (a.agreedCost - a.amountPaid), 0).toLocaleString()}</td>
+                  <td className="px-5 py-3 text-sm font-bold text-slate-900">NPR {filtered.reduce((s, a) => s + (Number.isFinite(Number(a.agreedCost)) ? Number(a.agreedCost) : 0), 0).toLocaleString()}</td>
+                  <td className="px-5 py-3 text-sm font-bold text-green-700">NPR {filtered.reduce((s, a) => s + (Number.isFinite(Number(a.amountPaid)) ? Number(a.amountPaid) : 0), 0).toLocaleString()}</td>
+                  <td className="px-5 py-3 text-sm font-bold text-red-600">NPR {filtered.reduce((s, a) => s + Math.max(0, (Number(a.agreedCost) || 0) - (Number(a.amountPaid) || 0)), 0).toLocaleString()}</td>
                   <td colSpan={2}></td>
                 </tr>
               </tfoot>
@@ -288,7 +288,7 @@ export default function AccountsPayable() {
                     <CheckCircle size={14} className="text-green-600" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-slate-900">NPR {payment.amount.toLocaleString()}</p>
+                    <p className="text-sm font-medium text-slate-900">NPR {(Number.isFinite(Number(payment.amount)) ? Number(payment.amount) : 0).toLocaleString()}</p>
                     <p className="text-xs text-slate-500">
                       {payment.paymentMode.replace('_', ' ')} • {payment.paidAt}
                       {payment.referenceNumber && ` • Ref: ${payment.referenceNumber}`}
@@ -331,11 +331,16 @@ export default function AccountsPayable() {
                   <option value="">Select an allocation...</option>
                   {allocations
                     .filter(a => a.paymentStatus !== 'SETTLED')
-                    .map(a => (
-                      <option key={a.id} value={a.id}>
-                        {a.vendorName} - {a.bookingCode} (Due: NPR {(a.agreedCost - a.amountPaid).toLocaleString()})
-                      </option>
-                    ))}
+                    .map(a => {
+                      const cost = Number.isFinite(Number(a.agreedCost)) ? Number(a.agreedCost) : 0;
+                      const paid = Number.isFinite(Number(a.amountPaid)) ? Number(a.amountPaid) : 0;
+                      const due = Math.max(0, cost - paid);
+                      return (
+                        <option key={a.id} value={a.id}>
+                          {a.vendorName} - {a.bookingCode} (Due: NPR {due.toLocaleString()})
+                        </option>
+                      );
+                    })}
                 </select>
               </div>
 
@@ -344,19 +349,22 @@ export default function AccountsPayable() {
                   {(() => {
                     const a = allocations.find(al => al.id === selectedAllocationId);
                     if (!a) return null;
+                    const cost = Number.isFinite(Number(a.agreedCost)) ? Number(a.agreedCost) : 0;
+                    const paid = Number.isFinite(Number(a.amountPaid)) ? Number(a.amountPaid) : 0;
+                    const due = Math.max(0, cost - paid);
                     return (
                       <>
                         <div className="flex justify-between">
                           <span className="text-slate-500">Agreed Cost:</span>
-                          <span className="font-medium text-slate-800">NPR {a.agreedCost.toLocaleString()}</span>
+                          <span className="font-medium text-slate-800">NPR {cost.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-slate-500">Already Paid:</span>
-                          <span className="font-medium text-green-600">NPR {a.amountPaid.toLocaleString()}</span>
+                          <span className="font-medium text-green-600">NPR {paid.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between border-t border-slate-200 pt-1">
                           <span className="font-semibold text-slate-700">Remaining Balance:</span>
-                          <span className="font-bold text-red-600">NPR {(a.agreedCost - a.amountPaid).toLocaleString()}</span>
+                          <span className="font-bold text-red-600">NPR {due.toLocaleString()}</span>
                         </div>
                       </>
                     );

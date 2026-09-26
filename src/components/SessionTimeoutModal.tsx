@@ -16,7 +16,8 @@ export const SessionTimeoutModal: React.FC<SessionTimeoutModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  const progressPercent = Math.min(100, Math.max(0, (secondsRemaining / 60) * 100));
+  const safeSeconds = Number.isFinite(secondsRemaining) ? Math.max(0, Math.round(secondsRemaining)) : 60;
+  const progressPercent = Math.min(100, Math.max(0, (safeSeconds / 60) * 100));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -42,7 +43,7 @@ export const SessionTimeoutModal: React.FC<SessionTimeoutModalProps> = ({
         {/* Countdown display */}
         <div className="my-5 p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 text-center">
           <div className="text-3xl sm:text-4xl font-black text-amber-600 dark:text-amber-400 tracking-tight font-mono">
-            00:{secondsRemaining < 10 ? `0${secondsRemaining}` : secondsRemaining}
+            00:{safeSeconds < 10 ? `0${safeSeconds}` : safeSeconds}
           </div>
           <p className="text-xs text-amber-700/80 dark:text-amber-400/80 mt-1 font-medium">
             seconds until automatic logout (15 min inactivity limit)

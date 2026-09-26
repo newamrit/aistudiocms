@@ -288,8 +288,8 @@ export default function Packages() {
                     <label className="block text-sm font-medium text-slate-700 mb-1.5">Standard Price (NPR)</label>
                     <input
                       type="number"
-                      value={formData.standardPrice}
-                      onChange={e => setFormData({ ...formData, standardPrice: Number(e.target.value) })}
+                      value={Number.isFinite(formData.standardPrice) ? formData.standardPrice : 0}
+                      onChange={e => setFormData({ ...formData, standardPrice: Number.isFinite(Number(e.target.value)) ? Math.max(0, Number(e.target.value)) : 0 })}
                       min="0"
                       className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-paila-blue/20 focus:border-paila-blue outline-none"
                     />
@@ -298,8 +298,8 @@ export default function Packages() {
                     <label className="block text-sm font-medium text-slate-700 mb-1.5">Duration (Days)</label>
                     <input
                       type="number"
-                      value={formData.durationDays}
-                      onChange={e => setFormData({ ...formData, durationDays: Number(e.target.value) })}
+                      value={Number.isFinite(formData.durationDays) ? formData.durationDays : 1}
+                      onChange={e => setFormData({ ...formData, durationDays: Number.isFinite(Number(e.target.value)) ? Math.max(1, Number(e.target.value)) : 1 })}
                       min="1"
                       className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-paila-blue/20 focus:border-paila-blue outline-none"
                     />
@@ -308,8 +308,8 @@ export default function Packages() {
                     <label className="block text-sm font-medium text-slate-700 mb-1.5">Duration (Nights)</label>
                     <input
                       type="number"
-                      value={formData.durationNights}
-                      onChange={e => setFormData({ ...formData, durationNights: Number(e.target.value) })}
+                      value={Number.isFinite(formData.durationNights) ? formData.durationNights : 0}
+                      onChange={e => setFormData({ ...formData, durationNights: Number.isFinite(Number(e.target.value)) ? Math.max(0, Number(e.target.value)) : 0 })}
                       min="0"
                       className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-paila-blue/20 focus:border-paila-blue outline-none"
                     />
@@ -504,7 +504,7 @@ export default function Packages() {
               <div>
                 <h4 className="text-sm font-bold text-green-700 mb-2">✓ Inclusions</h4>
                 <ul className="text-xs text-slate-700 space-y-1">
-                  {activePackage.inclusions.split(',').map((item, i) => item.trim() && (
+                  {(activePackage.inclusions || '').split(',').map((item, i) => item.trim() && (
                     <li key={i} className="flex gap-1.5">
                       <span className="text-green-600">•</span>
                       <span>{item.trim()}</span>
@@ -515,7 +515,7 @@ export default function Packages() {
               <div>
                 <h4 className="text-sm font-bold text-red-700 mb-2">✗ Exclusions</h4>
                 <ul className="text-xs text-slate-700 space-y-1">
-                  {activePackage.exclusions.split(',').map((item, i) => item.trim() && (
+                  {(activePackage.exclusions || '').split(',').map((item, i) => item.trim() && (
                     <li key={i} className="flex gap-1.5">
                       <span className="text-red-600">•</span>
                       <span>{item.trim()}</span>

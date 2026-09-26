@@ -37,13 +37,14 @@ export default function BookingsReportModal({
   const { settings } = useCompanySettings();
   const [scope, setScope] = useState<'FILTERED' | 'ALL'>('FILTERED');
   
-  const currentList = scope === 'FILTERED' ? initialFilteredBookings : allBookings;
+  const rawList = scope === 'FILTERED' ? initialFilteredBookings : allBookings;
+  const currentList = Array.isArray(rawList) ? rawList : [];
 
   // Financial aggregates
-  const totalAgreed = currentList.reduce((s, b) => s + b.totalAgreedAmount, 0);
-  const totalAdvance = currentList.reduce((s, b) => s + b.advanceReceived, 0);
-  const totalBalance = totalAgreed - totalAdvance;
-  const totalPax = currentList.reduce((s, b) => s + b.paxCount, 0);
+  const totalAgreed = currentList.reduce((s, b) => s + (Number.isFinite(Number(b.totalAgreedAmount)) ? Number(b.totalAgreedAmount) : 0), 0);
+  const totalAdvance = currentList.reduce((s, b) => s + (Number.isFinite(Number(b.advanceReceived)) ? Number(b.advanceReceived) : 0), 0);
+  const totalBalance = Math.max(0, totalAgreed - totalAdvance);
+  const totalPax = currentList.reduce((s, b) => s + (Number.isFinite(Number(b.paxCount)) ? Number(b.paxCount) : 0), 0);
 
   // Status breakdown
   const statusCounts = currentList.reduce((acc, b) => {
@@ -109,7 +110,11 @@ export default function BookingsReportModal({
       try {
         const start = new Date(b.startDate).getTime();
         const end = new Date(b.endDate).getTime();
-        durationDays = Math.max(1, Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1);
+        if (Number.isFinite(start) && Number.isFinite(end) && end >= start) {
+          durationDays = Math.max(1, Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1);
+        } else {
+          durationDays = 1;
+        }
       } catch {
         durationDays = 1;
       }
@@ -223,7 +228,7 @@ export default function BookingsReportModal({
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
-                Filtered ({initialFilteredBookings.length})
+                Filtered ({initialFilteredBookings?.length || 0})
               </button>
               <button
                 type="button"
@@ -234,7 +239,7 @@ export default function BookingsReportModal({
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
-                All Bookings ({allBookings.length})
+                All Bookings ({allBookings?.length || 0})
               </button>
             </div>
 
@@ -280,7 +285,7 @@ export default function BookingsReportModal({
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3.5">
                 <div className="w-16 h-16 bg-paila-blue rounded-2xl flex items-center justify-center text-white font-black text-xl shadow-md border-2 border-blue-900 shrink-0">
-                  {settings.companyName.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]?.toUpperCase()).join('') || 'PN'}
+                  {(settings?.companyName || 'Paila Nepal').split(' ').filter(Boolean).slice(0, 2).map(w => w[0]?.toUpperCase()).join('') || 'PN'}
                 </div>
                 <div>
                   <h1 className="text-2xl font-black text-paila-blue tracking-tight leading-tight uppercase">
@@ -345,12 +350,12 @@ export default function BookingsReportModal({
                 <span className="font-medium text-slate-700">
                   {scope === 'FILTERED' ? (
                     <>
-                      {activeFilters.status !== 'ALL' && `Status: ${activeFilters.status} • `}
-                      {activeFilters.clientType !== 'ALL' && `Type: ${activeFilters.clientType} • `}
-                      {activeFilters.dateFrom && `From: ${activeFilters.dateFrom} `}
-                      {activeFilters.dateTo && `To: ${activeFilters.dateTo} `}
-                      {activeFilters.search && `Query: "${activeFilters.search}"`}
-                      {activeFilters.status === 'ALL' && activeFilters.clientType === 'ALL' && !activeFilters.dateFrom && !activeFilters.dateTo && !activeFilters.search && 'All Criteria'}
+                      {activeFilters?.status && activeFilters.status !== 'ALL' && `Status: ${activeFilters.status} • `}
+                      {activeFilters?.clientType && activeFilters.clientType !== 'ALL' && `Type: ${activeFilters.clientType} • `}
+                      {activeFilters?.dateFrom && `From: ${activeFilters.dateFrom} `}
+                      {activeFilters?.dateTo && `To: ${activeFilters.dateTo} `}
+                      {activeFilters?.search && `Query: "${activeFilters.search}"`}
+                      {(!activeFilters || (activeFilters.status === 'ALL' && activeFilters.clientType === 'ALL' && !activeFilters.dateFrom && !activeFilters.dateTo && !activeFilters.search)) && 'All Criteria'}
                     </>
                   ) : (
                     'Unfiltered (All Records)'
@@ -369,7 +374,7 @@ export default function BookingsReportModal({
             </div>
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-center">
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Total Travelers</span>
-              <span className="text-xl font-black text-paila-blue mt-1 block">{totalPax}</span>
+              <span className="text-xl font-black text-paila-blue mt-1 block">{Number.isFinite(totalPax) ? totalPax : 0}</span>
               <span className="text-[10px] text-slate-500 mt-0.5 block">Total Pax</span>
             </div>
             <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-3 text-center">
@@ -402,7 +407,7 @@ export default function BookingsReportModal({
                   key={st}
                   className={`px-2.5 py-0.5 rounded-lg border font-semibold text-xs ${getStatusBadge(st as BookingStatus)}`}
                 >
-                  {st.replace('_', ' ')}: <strong>{count}</strong>
+                  {st.replace('_', ' ')}: <strong>{Number.isFinite(count) ? count : 0}</strong>
                 </span>
               );
             })}
@@ -427,7 +432,9 @@ export default function BookingsReportModal({
               </thead>
               <tbody className="divide-y divide-slate-200">
                 {currentList.map((b, idx) => {
-                  const balance = b.totalAgreedAmount - b.advanceReceived;
+                  const total = Number.isFinite(Number(b.totalAgreedAmount)) ? Number(b.totalAgreedAmount) : 0;
+                  const advance = Number.isFinite(Number(b.advanceReceived)) ? Number(b.advanceReceived) : 0;
+                  const balance = Math.max(0, total - advance);
                   return (
                     <tr key={b.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
                       <td className="p-2.5 border border-slate-200 text-center font-mono text-slate-500">
@@ -453,13 +460,13 @@ export default function BookingsReportModal({
                         <div className="text-slate-400 text-[10px]">to {b.endDate}</div>
                       </td>
                       <td className="p-2.5 border border-slate-200 text-center font-bold text-slate-800">
-                        {b.paxCount}
+                        {Number.isFinite(Number(b.paxCount)) ? b.paxCount : 1}
                       </td>
                       <td className="p-2.5 border border-slate-200 text-right font-mono font-medium text-slate-900 whitespace-nowrap">
-                        {b.totalAgreedAmount.toLocaleString()}
+                        {total.toLocaleString()}
                       </td>
                       <td className="p-2.5 border border-slate-200 text-right font-mono font-medium text-emerald-700 whitespace-nowrap">
-                        {b.advanceReceived.toLocaleString()}
+                        {advance.toLocaleString()}
                       </td>
                       <td className="p-2.5 border border-slate-200 text-right font-mono font-medium text-amber-800 whitespace-nowrap">
                         {balance.toLocaleString()}
@@ -479,7 +486,7 @@ export default function BookingsReportModal({
                     Grand Totals ({currentList.length} Bookings):
                   </td>
                   <td className="p-2.5 border border-slate-200 text-center font-bold text-paila-blue">
-                    {totalPax}
+                    {Number.isFinite(totalPax) ? totalPax : 0}
                   </td>
                   <td className="p-2.5 border border-slate-200 text-right font-mono text-paila-blue">
                     NPR {totalAgreed.toLocaleString()}

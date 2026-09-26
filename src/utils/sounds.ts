@@ -3,12 +3,25 @@
 class SoundManager {
   private audioContext: AudioContext | null = null;
   private enabled: boolean = true;
+  private masterVolume: number = 0.5;
+  private muted: boolean = false;
 
   constructor() {
     // Try to initialize audio context
     if (typeof window !== 'undefined') {
       try {
         this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        
+        // Load initial state from localStorage
+        const storedVolume = localStorage.getItem('paila_system_volume');
+        if (storedVolume !== null) {
+          this.masterVolume = parseFloat(storedVolume);
+        }
+        
+        const storedMute = localStorage.getItem('paila_system_muted');
+        if (storedMute !== null) {
+          this.muted = storedMute === 'true';
+        }
       } catch (e) {
         console.warn('Web Audio API not supported');
       }
@@ -16,7 +29,7 @@ class SoundManager {
   }
 
   private playTone(frequency: number, duration: number, type: OscillatorType = 'sine', volume: number = 0.3) {
-    if (!this.audioContext || !this.enabled) return;
+    if (!this.audioContext || !this.enabled || this.muted) return;
 
     try {
       const oscillator = this.audioContext.createOscillator();
@@ -28,7 +41,8 @@ class SoundManager {
       oscillator.frequency.value = frequency;
       oscillator.type = type;
 
-      gainNode.gain.setValueAtTime(volume, this.audioContext.currentTime);
+      const finalVolume = volume * this.masterVolume;
+      gainNode.gain.setValueAtTime(finalVolume, this.audioContext.currentTime);
       gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration);
 
       oscillator.start(this.audioContext.currentTime);
@@ -117,6 +131,29 @@ class SoundManager {
 
   isEnabled() {
     return this.enabled;
+  }
+
+  setVolume(volume: number) {
+    this.masterVolume = Math.max(0, Math.min(1, volume));
+    localStorage.setItem('paila_system_volume', this.masterVolume.toString());
+  }
+
+  getVolume() {
+    return this.masterVolume;
+  }
+
+  setMuted(muted: boolean) {
+    this.muted = muted;
+    localStorage.setItem('paila_system_muted', this.muted.toString());
+  }
+
+  isMuted() {
+    return this.muted;
+  }
+
+  toggleMute() {
+    this.setMuted(!this.muted);
+    return this.muted;
   }
 }
 

@@ -143,7 +143,7 @@ export default function Operations() {
               </span>
             </div>
             <p className="text-sm font-semibold text-slate-900">{booking.clientName}</p>
-            <p className="text-xs text-slate-500 mt-1">{booking.packageName || 'Custom'} • {booking.paxCount} pax</p>
+            <p className="text-xs text-slate-500 mt-1">{booking.packageName || 'Custom'} • {Number.isFinite(Number(booking.paxCount)) ? booking.paxCount : 1} pax</p>
             <div className="mt-3 flex items-center justify-between text-xs">
               <span className="text-slate-500">{booking.startDate} → {booking.endDate}</span>
               <span className="text-paila-blue font-medium">
@@ -288,9 +288,9 @@ export default function Operations() {
                       </span>
                     </td>
                     <td className="px-5 py-3.5 text-sm text-slate-600">{alloc.serviceDate}</td>
-                    <td className="px-5 py-3.5 text-sm font-medium text-slate-900">NPR {alloc.agreedCost.toLocaleString()}</td>
-                    <td className="px-5 py-3.5 text-sm text-green-600 font-medium">NPR {alloc.amountPaid.toLocaleString()}</td>
-                    <td className="px-5 py-3.5 text-sm text-red-600 font-medium">NPR {(alloc.agreedCost - alloc.amountPaid).toLocaleString()}</td>
+                    <td className="px-5 py-3.5 text-sm font-medium text-slate-900">NPR {(Number.isFinite(Number(alloc.agreedCost)) ? Number(alloc.agreedCost) : 0).toLocaleString()}</td>
+                    <td className="px-5 py-3.5 text-sm text-green-600 font-medium">NPR {(Number.isFinite(Number(alloc.amountPaid)) ? Number(alloc.amountPaid) : 0).toLocaleString()}</td>
+                    <td className="px-5 py-3.5 text-sm text-red-600 font-medium">NPR {Math.max(0, (Number(alloc.agreedCost) || 0) - (Number(alloc.amountPaid) || 0)).toLocaleString()}</td>
                     <td className="px-5 py-3.5">
                       <span className={`px-2.5 py-1 text-[10px] font-semibold rounded-full ${
                         alloc.paymentStatus === 'SETTLED' ? 'bg-green-100 text-green-700' :

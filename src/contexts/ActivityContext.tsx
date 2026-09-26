@@ -187,19 +187,25 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
     return initialSeedActivities;
   });
 
-  // Hydrate activities from MySQL database on mount
+  // Hydrate activities from database on mount and live poll
   useEffect(() => {
     let isMounted = true;
-    apiClient.activities.getAll().then(dbActivities => {
-      if (isMounted && Array.isArray(dbActivities) && dbActivities.length > 0) {
-        setActivities(dbActivities);
-      }
-    }).catch(err => {
-      console.warn('Failed to fetch activities from database:', err);
-    });
+    const fetchAuditActivities = () => {
+      apiClient.activities.getAll().then(dbActivities => {
+        if (isMounted && Array.isArray(dbActivities) && dbActivities.length > 0) {
+          setActivities(dbActivities);
+        }
+      }).catch(err => {
+        console.warn('Failed to fetch activities from database:', err);
+      });
+    };
+
+    fetchAuditActivities();
+    const pollInterval = setInterval(fetchAuditActivities, 25000);
 
     return () => {
       isMounted = false;
+      clearInterval(pollInterval);
     };
   }, []);
 

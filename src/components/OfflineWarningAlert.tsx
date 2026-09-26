@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { useAlerts } from '../contexts/AlertContext';
+import { useAlerts, OfflineQueueItem } from '../contexts/AlertContext';
 import { 
   WifiOff, Wifi, RefreshCw, AlertTriangle, CheckCircle2, 
   ChevronDown, ChevronUp, Database, ArrowUpRight, 
-  X, Layers, Clock, ShieldAlert, Sparkles, ServerCrash, Check
+  X, Layers, Clock, ShieldAlert, Sparkles, ServerCrash, Check, Activity
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import OfflineSyncLog from './OfflineSyncLog';
 
 interface OfflineWarningAlertProps {
   className?: string;
@@ -30,6 +31,7 @@ export default function OfflineWarningAlert({ className = '' }: OfflineWarningAl
   } = useAlerts();
 
   const [showQueueDetails, setShowQueueDetails] = useState<boolean>(false);
+  const [showSyncLog, setShowSyncLog] = useState<boolean>(false);
 
   // Check if we should display the offline warning
   const isDisconnected = !isOnline || !isApiConnected || connectionStatus === 'offline' || connectionStatus === 'degraded' || connectionStatus === 'reconnecting';
@@ -129,6 +131,17 @@ export default function OfflineWarningAlert({ className = '' }: OfflineWarningAl
                   <span>Last synced: {formatSyncTime(lastSyncTime)}</span>
                 </div>
 
+                {/* View Sync Log Button */}
+                <button
+                  type="button"
+                  onClick={() => setShowSyncLog(true)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-900 dark:text-amber-200 border border-amber-500/30 transition-colors cursor-pointer"
+                  title="View history of sync attempts and troubleshoot connection"
+                >
+                  <Activity size={13} />
+                  <span>Sync Log</span>
+                </button>
+
                 {/* View Queue Toggle Button */}
                 {pendingSyncCount > 0 && (
                   <button
@@ -158,7 +171,7 @@ export default function OfflineWarningAlert({ className = '' }: OfflineWarningAl
                 {/* Simulation Toggle for Easy Demo/Testing */}
                 <button
                   type="button"
-                  onClick={() => setSimulateOffline(prev => !prev)}
+                  onClick={() => setSimulateOffline((prev: boolean) => !prev)}
                   className={`inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold rounded-lg transition-colors cursor-pointer ${
                     simulateOffline
                       ? 'bg-rose-600 text-white hover:bg-rose-700'
@@ -193,7 +206,7 @@ export default function OfflineWarningAlert({ className = '' }: OfflineWarningAl
                   <span className="text-[10px] text-amber-700 dark:text-amber-400">Will automatically execute on reconnect</span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-40 overflow-y-auto pr-1">
-                  {offlineQueueItems.map((item, idx) => (
+                  {offlineQueueItems.map((item: OfflineQueueItem, idx: number) => (
                     <div 
                       key={item.id || idx}
                       className="p-2 rounded-lg bg-amber-50/80 dark:bg-slate-900/60 border border-amber-200/80 dark:border-amber-800/40 flex flex-col justify-between"
@@ -237,6 +250,12 @@ export default function OfflineWarningAlert({ className = '' }: OfflineWarningAl
           <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
         </button>
       )}
+
+      {/* Standalone Offline Sync Log Modal */}
+      <OfflineSyncLog
+        isOpen={showSyncLog}
+        onClose={() => setShowSyncLog(false)}
+      />
     </>
   );
 }

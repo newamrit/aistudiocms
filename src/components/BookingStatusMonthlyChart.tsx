@@ -29,7 +29,7 @@ interface MonthlyData {
 }
 
 export default function BookingStatusMonthlyChart({
-  bookings,
+  bookings = [],
   onSelectMonth,
   selectedMonth,
   className = '',
@@ -99,8 +99,8 @@ export default function BookingStatusMonthlyChart({
       }
 
       item.total += 1;
-      item.revenue += b.totalAgreedAmount || 0;
-      item.pax += b.paxCount || 1;
+      item.revenue += Number.isFinite(Number(b.totalAgreedAmount)) ? Number(b.totalAgreedAmount) : 0;
+      item.pax += Number.isFinite(Number(b.paxCount)) ? Number(b.paxCount) : 1;
 
       switch (b.status) {
         case 'CONFIRMED':
@@ -532,15 +532,18 @@ export default function BookingStatusMonthlyChart({
                 const isHovered = hoveredIndex === index;
                 const isSelected = selectedMonth === d.monthKey;
 
-                if (viewMode === 'STACKED') {
+                 if (viewMode === 'STACKED') {
                   const barW = Math.min(columnWidth * 0.5, 36);
                   const barX = colX + (columnWidth - barW) / 2;
 
                   // Stack values bottom-up
-                  const hConfirmed = ((d.confirmed + d.inProgress) / currentMaxY) * plotHeight;
-                  const hPending = (d.pending / currentMaxY) * plotHeight;
-                  const hCompleted = (d.completed / currentMaxY) * plotHeight;
-                  const hCancelled = (d.cancelled / currentMaxY) * plotHeight;
+                  const safeMaxY = (Number.isFinite(currentMaxY) && currentMaxY > 0) ? currentMaxY : 4;
+                  const safePlotHeight = Number.isFinite(plotHeight) ? plotHeight : 185;
+                  
+                  const hConfirmed = Number.isFinite(d.confirmed + d.inProgress) ? (((d.confirmed + d.inProgress) / safeMaxY) * safePlotHeight) : 0;
+                  const hPending = Number.isFinite(d.pending) ? ((d.pending / safeMaxY) * safePlotHeight) : 0;
+                  const hCompleted = Number.isFinite(d.completed) ? ((d.completed / safeMaxY) * safePlotHeight) : 0;
+                  const hCancelled = Number.isFinite(d.cancelled) ? ((d.cancelled / safeMaxY) * safePlotHeight) : 0;
 
                   let currentY = paddingTop + plotHeight;
 
@@ -565,7 +568,7 @@ export default function BookingStatusMonthlyChart({
                         return (
                           <rect 
                             x={barX} 
-                            y={y} 
+                            y={Number.isFinite(y) ? y : currentY} 
                             width={barW} 
                             height={hConfirmed} 
                             className="fill-[#012871] dark:fill-blue-500 transition-all duration-300"
@@ -580,7 +583,7 @@ export default function BookingStatusMonthlyChart({
                         return (
                           <rect 
                             x={barX} 
-                            y={y} 
+                            y={Number.isFinite(y) ? y : currentY} 
                             width={barW} 
                             height={hPending} 
                             className="fill-[#f59e0b] transition-all duration-300"
@@ -595,7 +598,7 @@ export default function BookingStatusMonthlyChart({
                         return (
                           <rect 
                             x={barX} 
-                            y={y} 
+                            y={Number.isFinite(y) ? y : currentY} 
                             width={barW} 
                             height={hCompleted} 
                             className="fill-[#94a3b8] transition-all duration-300"
@@ -610,7 +613,7 @@ export default function BookingStatusMonthlyChart({
                         return (
                           <rect 
                             x={barX} 
-                            y={y} 
+                            y={Number.isFinite(y) ? y : currentY} 
                             width={barW} 
                             height={hCancelled} 
                             className="fill-[#f43f5e] transition-all duration-300"
@@ -634,6 +637,9 @@ export default function BookingStatusMonthlyChart({
                     { val: d.cancelled, color: 'fill-[#f43f5e]' },
                   ];
 
+                  const safeMaxY = (Number.isFinite(currentMaxY) && currentMaxY > 0) ? currentMaxY : 4;
+                  const safePlotHeight = Number.isFinite(plotHeight) ? plotHeight : 185;
+
                   return (
                     <g key={d.monthKey}>
                       {/* Highlight backdrop */}
@@ -649,14 +655,15 @@ export default function BookingStatusMonthlyChart({
                       )}
 
                       {bars.map((bar, bIdx) => {
-                        const h = (bar.val / currentMaxY) * plotHeight;
+                        const rawH = (bar.val / safeMaxY) * safePlotHeight;
+                        const h = Number.isFinite(rawH) ? rawH : 0;
                         const bx = startX + bIdx * (singleBarW + 2);
                         const by = paddingTop + plotHeight - h;
                         return h > 0 ? (
                           <rect 
                             key={`gb-${bIdx}`}
                             x={bx}
-                            y={by}
+                            y={Number.isFinite(by) ? by : (paddingTop + plotHeight)}
                             width={singleBarW}
                             height={h}
                             className={`${bar.color} transition-all duration-300`}
@@ -804,7 +811,7 @@ export default function BookingStatusMonthlyChart({
                         <span className="w-2 h-2 rounded-full bg-blue-500" />
                         Confirmed:
                       </span>
-                      <span className="font-bold text-white font-mono">{activeMonthData.confirmed}</span>
+                      <span className="font-bold text-white font-mono">{Number.isFinite(activeMonthData.confirmed) ? activeMonthData.confirmed : 0}</span>
                     </div>
 
                     {activeMonthData.inProgress > 0 && (
@@ -813,7 +820,7 @@ export default function BookingStatusMonthlyChart({
                           <span className="w-2 h-2 rounded-full bg-emerald-500" />
                           In Progress:
                         </span>
-                        <span className="font-bold text-white font-mono">{activeMonthData.inProgress}</span>
+                        <span className="font-bold text-white font-mono">{Number.isFinite(activeMonthData.inProgress) ? activeMonthData.inProgress : 0}</span>
                       </div>
                     )}
 
@@ -822,7 +829,7 @@ export default function BookingStatusMonthlyChart({
                         <span className="w-2 h-2 rounded-full bg-amber-500" />
                         Pending (Proposed):
                       </span>
-                      <span className="font-bold text-white font-mono">{activeMonthData.pending}</span>
+                      <span className="font-bold text-white font-mono">{Number.isFinite(activeMonthData.pending) ? activeMonthData.pending : 0}</span>
                     </div>
 
                     <div className="flex items-center justify-between">
@@ -830,7 +837,7 @@ export default function BookingStatusMonthlyChart({
                         <span className="w-2 h-2 rounded-full bg-slate-400" />
                         Completed:
                       </span>
-                      <span className="font-bold text-white font-mono">{activeMonthData.completed}</span>
+                      <span className="font-bold text-white font-mono">{Number.isFinite(activeMonthData.completed) ? activeMonthData.completed : 0}</span>
                     </div>
 
                     <div className="flex items-center justify-between">
@@ -838,13 +845,13 @@ export default function BookingStatusMonthlyChart({
                         <span className="w-2 h-2 rounded-full bg-rose-500" />
                         Cancelled:
                       </span>
-                      <span className="font-bold text-white font-mono">{activeMonthData.cancelled}</span>
+                      <span className="font-bold text-white font-mono">{Number.isFinite(activeMonthData.cancelled) ? activeMonthData.cancelled : 0}</span>
                     </div>
                   </div>
 
                   <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
-                    <span>Travelers: <strong className="text-white">{activeMonthData.pax} Pax</strong></span>
-                    <span>Value: <strong className="text-emerald-400 font-mono">NPR {(activeMonthData.revenue / 1000).toFixed(0)}k</strong></span>
+                    <span>Travelers: <strong className="text-white">{Number.isFinite(activeMonthData.pax) ? activeMonthData.pax : 0} Pax</strong></span>
+                    <span>Value: <strong className="text-emerald-400 font-mono">NPR {Number.isFinite(activeMonthData.revenue) ? (activeMonthData.revenue / 1000).toFixed(0) : '0'}k</strong></span>
                   </div>
 
                   {onSelectMonth && (

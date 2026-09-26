@@ -220,13 +220,29 @@ export function useSyncQueue() {
     }
 
     setSyncing(true);
+    SyncManager.notifyProgress({
+      stage: 'syncing',
+      progress: 20,
+      current: 0,
+      total: 0,
+      message: 'Synchronizing with cloud server...',
+      timestamp: Date.now(),
+    });
     try {
-      const result = await SyncManager.processQueue();
+      const result = await SyncManager.processQueue(undefined, true);
       console.log(`Sync completed: ${result.success} success, ${result.failed} failed`);
       await refreshStats();
       return result;
     } catch (error) {
       console.error('Sync failed:', error);
+      SyncManager.notifyProgress({
+        stage: 'error',
+        progress: 100,
+        current: 0,
+        total: 0,
+        message: 'Sync interrupted — retrying in background',
+        timestamp: Date.now(),
+      });
       throw error;
     } finally {
       setSyncing(false);

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { sounds } from '../utils/sounds';
 import { useAuth } from './AuthContext';
+import { apiClient, DB_KEYS } from '../api/apiClient';
 
 export type ActivityType =
   | 'STATUS_CHANGE'
@@ -30,8 +31,9 @@ interface FieldActivityContextType {
   activities: FieldActivity[];
   latestIncomingActivity: FieldActivity | null;
   clearLatestIncomingActivity: () => void;
-  addActivity: (activity: Omit<FieldActivity, 'id' | 'timestamp' | 'acknowledged'>) => void;
-  acknowledgeActivity: (id: number) => void;
+  addActivity: (activity: Omit<FieldActivity, 'id' | 'timestamp' | 'acknowledged'>) => Promise<FieldActivity>;
+  acknowledgeActivity: (id: number) => Promise<void>;
+  refreshActivities: () => Promise<void>;
   resetToZeroState: () => void;
   getActivitiesByTourLeader: (tourLeaderId: number) => FieldActivity[];
   getActivitiesByBooking: (bookingId: number) => FieldActivity[];
@@ -40,67 +42,187 @@ interface FieldActivityContextType {
 
 const FieldActivityContext = createContext<FieldActivityContextType | undefined>(undefined);
 
-// Seed with realistic historical activity data
+function getRollingDate(daysAgo: number, timeStr = '12:00:00'): string {
+  const d = new Date();
+  d.setDate(d.getDate() - daysAgo);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day} ${timeStr}`;
+}
+
+// Seed with realistic historical activity data across the rolling last 7 days
 const seedActivities: FieldActivity[] = [
+  // Day 0: Today
   {
-    id: 1, type: 'STATUS_CHANGE', tourLeaderId: 4, tourLeaderName: 'Prakash Gurung',
+    id: 1, type: 'CHECK_IN', tourLeaderId: 4, tourLeaderName: 'Prakash Gurung',
     bookingId: 2, bookingCode: 'PNH-2026-002', clientName: 'Hans Mueller (Germany)',
-    timestamp: '2026-01-20 06:30:00', title: 'Tour Started',
-    description: 'Tour status changed from CONFIRMED to IN_PROGRESS. Group departed from Kathmandu to Nayapul.',
+    timestamp: getRollingDate(0, '08:30:00'), title: 'Namche Bazaar Check-in',
+    description: 'All 6 trekkers safe and healthy. Altitude 3,440m reached. Clear Himalayan view, resting before Tengboche.',
+    metadata: { paxSafe: 6, paxTotal: 6, weatherCondition: 'Clear & Sunny', nextStop: 'Tengboche Monastery', altitude: '3,440m' },
+    acknowledged: false, priority: 'LOW'
+  },
+  {
+    id: 2, type: 'SPOT_EXPENSE', tourLeaderId: 4, tourLeaderName: 'Prakash Gurung',
+    bookingId: 2, bookingCode: 'PNH-2026-002', clientName: 'Hans Mueller (Germany)',
+    timestamp: getRollingDate(0, '11:15:00'), title: 'Spot Expense: NPR 6,000',
+    description: 'Sagarmatha National Park entry checkpoint permits and conservation fees for 6 foreign trekkers.',
+    metadata: { amount: 6000, category: 'Permits', paymentMethod: 'CASH' },
+    acknowledged: false, priority: 'MEDIUM'
+  },
+  {
+    id: 3, type: 'CHECK_IN', tourLeaderId: 4, tourLeaderName: 'Prakash Gurung',
+    bookingId: 1, bookingCode: 'PNH-2026-001', clientName: 'St. Xavier School Group',
+    timestamp: getRollingDate(0, '14:45:00'), title: 'Pokhara Lakeside Check-in',
+    description: 'All 24 students and 3 faculty members checked in safely at Pokhara. Briefing for Sarangkot sunrise excursion done.',
+    metadata: { paxSafe: 27, paxTotal: 27, weatherCondition: 'Mild breeze', nextStop: 'Sarangkot' },
+    acknowledged: true, priority: 'LOW'
+  },
+  // Day 1: Yesterday
+  {
+    id: 4, type: 'CHECK_IN', tourLeaderId: 4, tourLeaderName: 'Prakash Gurung',
+    bookingId: 2, bookingCode: 'PNH-2026-002', clientName: 'Hans Mueller (Germany)',
+    timestamp: getRollingDate(1, '16:00:00'), title: 'Phakding Teahouse Check-in',
+    description: 'Lukla flight landed on schedule. Trek to Phakding completed smoothly. Trekkers acclimatizing comfortably.',
+    metadata: { paxSafe: 6, paxTotal: 6, weatherCondition: 'Clear', nextStop: 'Namche Bazaar' },
+    acknowledged: true, priority: 'LOW'
+  },
+  {
+    id: 5, type: 'STATUS_CHANGE', tourLeaderId: 4, tourLeaderName: 'Prakash Gurung',
+    bookingId: 2, bookingCode: 'PNH-2026-002', clientName: 'Hans Mueller (Germany)',
+    timestamp: getRollingDate(1, '07:15:00'), title: 'Tour Started: In Progress',
+    description: 'Tour status changed from CONFIRMED to IN_PROGRESS. Domestic flight Tribhuvan Airport → Tenzing-Hillary Lukla completed.',
     metadata: { fromStatus: 'CONFIRMED', toStatus: 'IN_PROGRESS' },
     acknowledged: true, priority: 'LOW'
   },
   {
-    id: 2, type: 'VENDOR_SWAP', tourLeaderId: 4, tourLeaderName: 'Prakash Gurung',
+    id: 6, type: 'SPOT_EXPENSE', tourLeaderId: 4, tourLeaderName: 'Prakash Gurung',
     bookingId: 2, bookingCode: 'PNH-2026-002', clientName: 'Hans Mueller (Germany)',
-    timestamp: '2026-01-21 16:45:00', title: 'Hotel Swap Authorized',
-    description: 'Swapped Ghorepani Teahouse → Snow Leopard Lodge. Reason: Original teahouse fully booked due to season rush.',
-    metadata: { originalVendor: 'Ghorepani Teahouse', newVendor: 'Snow Leopard Lodge', serviceType: 'HOTEL', costDifference: 2000 },
+    timestamp: getRollingDate(1, '18:30:00'), title: 'Spot Expense: NPR 1,800',
+    description: 'Boiled water refills & hydration supplies for client acclimatization at Phakding.',
+    metadata: { amount: 1800, category: 'Food & Refreshments', paymentMethod: 'CASH' },
+    acknowledged: true, priority: 'LOW'
+  },
+  {
+    id: 7, type: 'CHECK_IN', tourLeaderId: 4, tourLeaderName: 'Prakash Gurung',
+    bookingId: 3, bookingCode: 'PNH-2026-003', clientName: 'Sarah Jenkins (UK)',
+    timestamp: getRollingDate(1, '17:20:00'), title: 'Australian Camp Check-in',
+    description: 'Poon Hill circuit group arrived at Australian Camp. Evening views of Annapurna South spectacular.',
+    metadata: { paxSafe: 2, paxTotal: 2, weatherCondition: 'Clear skies', nextStop: 'Ghandruk' },
+    acknowledged: true, priority: 'LOW'
+  },
+  // Day 2: 2 days ago
+  {
+    id: 8, type: 'CHECK_IN', tourLeaderId: 4, tourLeaderName: 'Prakash Gurung',
+    bookingId: 2, bookingCode: 'PNH-2026-002', clientName: 'Hans Mueller (Germany)',
+    timestamp: getRollingDate(2, '06:15:00'), title: 'Annapurna Base Camp Check-in',
+    description: 'Reached ABC 4,130m for morning golden hour. 100% group members fit, oxygen saturation 88-92%.',
+    metadata: { paxSafe: 6, paxTotal: 6, weatherCondition: 'Cold & Crisp', nextStop: 'Bamboo' },
+    acknowledged: true, priority: 'LOW'
+  },
+  {
+    id: 9, type: 'VENDOR_SWAP', tourLeaderId: 4, tourLeaderName: 'Prakash Gurung',
+    bookingId: 2, bookingCode: 'PNH-2026-002', clientName: 'Hans Mueller (Germany)',
+    timestamp: getRollingDate(2, '14:20:00'), title: 'Lodge Swap Authorized',
+    description: 'Swapped Sanctuary Teahouse → Snowland Lodge due to complimentary hot shower and heated dining room.',
+    metadata: { originalVendor: 'Sanctuary Teahouse', newVendor: 'Snowland Lodge', serviceType: 'HOTEL', costDifference: 1500 },
     acknowledged: true, priority: 'MEDIUM'
   },
   {
-    id: 3, type: 'SPOT_EXPENSE', tourLeaderId: 4, tourLeaderName: 'Prakash Gurung',
+    id: 10, type: 'SPOT_EXPENSE', tourLeaderId: 4, tourLeaderName: 'Prakash Gurung',
     bookingId: 2, bookingCode: 'PNH-2026-002', clientName: 'Hans Mueller (Germany)',
-    timestamp: '2026-01-21 14:30:00', title: 'Spot Expense: NPR 1,200',
-    description: 'Extra water bottles for group due to heat wave conditions.',
-    metadata: { amount: 1200, category: 'Refreshments', paymentMethod: 'CASH' },
+    timestamp: getRollingDate(2, '19:00:00'), title: 'Spot Expense: NPR 2,200',
+    description: 'Dining hall fireplace heating fee and battery charging cards for clients.',
+    metadata: { amount: 2200, category: 'Utilities', paymentMethod: 'CASH' },
+    acknowledged: true, priority: 'LOW'
+  },
+  // Day 3: 3 days ago
+  {
+    id: 11, type: 'CHECK_IN', tourLeaderId: 4, tourLeaderName: 'Prakash Gurung',
+    bookingId: 2, bookingCode: 'PNH-2026-002', clientName: 'Hans Mueller (Germany)',
+    timestamp: getRollingDate(3, '15:40:00'), title: 'Machhapuchhre Base Camp Check-in',
+    description: 'Arrived at MBC 3,700m. Cloud cover moving in. Trekkers instructed to stay hydrated.',
+    metadata: { paxSafe: 6, paxTotal: 6, weatherCondition: 'Overcast & Foggy', nextStop: 'ABC' },
     acknowledged: true, priority: 'LOW'
   },
   {
-    id: 4, type: 'SPOT_EXPENSE', tourLeaderId: 4, tourLeaderName: 'Prakash Gurung',
+    id: 12, type: 'CHECK_IN', tourLeaderId: 4, tourLeaderName: 'Prakash Gurung',
+    bookingId: 1, bookingCode: 'PNH-2026-001', clientName: 'St. Xavier School Group',
+    timestamp: getRollingDate(3, '18:10:00'), title: 'Chitwan Resort Check-in',
+    description: 'School safari group arrived at Sauraha, Chitwan. Evening Tharu cultural show attended safely.',
+    metadata: { paxSafe: 27, paxTotal: 27, weatherCondition: 'Warm 28°C', nextStop: 'Jungle Walk' },
+    acknowledged: true, priority: 'LOW'
+  },
+  {
+    id: 13, type: 'SPOT_EXPENSE', tourLeaderId: 4, tourLeaderName: 'Prakash Gurung',
     bookingId: 2, bookingCode: 'PNH-2026-002', clientName: 'Hans Mueller (Germany)',
-    timestamp: '2026-01-22 09:15:00', title: 'Spot Expense: NPR 850',
-    description: 'Emergency medicine purchased at pharmacy for client with altitude headache.',
-    metadata: { amount: 850, category: 'Medical', paymentMethod: 'PERSONAL' },
+    timestamp: getRollingDate(3, '12:00:00'), title: 'Spot Expense: NPR 3,000',
+    description: 'Emergency porter assistance for trekker recovering from mild sprain.',
+    metadata: { amount: 3000, category: 'Transport', paymentMethod: 'CASH' },
     acknowledged: true, priority: 'HIGH'
   },
+  // Day 4: 4 days ago
   {
-    id: 5, type: 'CHECK_IN', tourLeaderId: 4, tourLeaderName: 'Prakash Gurung',
+    id: 14, type: 'CHECK_IN', tourLeaderId: 4, tourLeaderName: 'Prakash Gurung',
     bookingId: 2, bookingCode: 'PNH-2026-002', clientName: 'Hans Mueller (Germany)',
-    timestamp: '2026-01-22 17:00:00', title: 'Daily Check-in',
-    description: 'All 4 trekkers safe and well. Reached Tadapani. Weather clear. Group morale good.',
-    metadata: { paxSafe: 4, paxTotal: 4, weatherCondition: 'Clear', nextStop: 'Chhomrong' },
+    timestamp: getRollingDate(4, '16:30:00'), title: 'Deurali Ridge Check-in',
+    description: 'Reached Deurali 3,200m before afternoon rainfall. Avalanche chute passage crossed safely under guide supervision.',
+    metadata: { paxSafe: 6, paxTotal: 6, weatherCondition: 'Afternoon Rain', nextStop: 'MBC' },
     acknowledged: true, priority: 'LOW'
   },
   {
-    id: 6, type: 'VENDOR_SWAP', tourLeaderId: 4, tourLeaderName: 'Prakash Gurung',
+    id: 15, type: 'VENDOR_SWAP', tourLeaderId: 4, tourLeaderName: 'Prakash Gurung',
     bookingId: 2, bookingCode: 'PNH-2026-002', clientName: 'Hans Mueller (Germany)',
-    timestamp: '2026-01-23 12:30:00', title: 'Restaurant Swap - Pending Authorization',
-    description: 'Lunch restaurant closed unexpectedly. Swapping to nearby Mountain View Cafe. Same meal plan cost.',
-    metadata: { originalVendor: 'Tadapani Tea House', newVendor: 'Mountain View Cafe', serviceType: 'RESTAURANT', costDifference: 0 },
-    acknowledged: false, priority: 'MEDIUM'
+    timestamp: getRollingDate(4, '13:00:00'), title: 'Lunch Restaurant Swap',
+    description: 'Original tea shop closed. Swapped to Panorama View Kitchen. Same set menu pricing.',
+    metadata: { originalVendor: 'Modi Khola Teahouse', newVendor: 'Panorama Kitchen', serviceType: 'RESTAURANT', costDifference: 0 },
+    acknowledged: true, priority: 'LOW'
   },
   {
-    id: 7, type: 'SPOT_EXPENSE', tourLeaderId: 4, tourLeaderName: 'Prakash Gurung',
-    bookingId: 2, bookingCode: 'PNH-2026-002', clientName: 'Hans Mueller (Germany)',
-    timestamp: '2026-01-23 15:00:00', title: 'Spot Expense: NPR 3,500',
-    description: 'Emergency porter hired at Chhomrong as one trekker developed knee pain and cannot carry own bag.',
-    metadata: { amount: 3500, category: 'Transport', paymentMethod: 'CASH' },
-    acknowledged: false, priority: 'HIGH'
+    id: 16, type: 'CHECK_IN', tourLeaderId: 4, tourLeaderName: 'Prakash Gurung',
+    bookingId: 3, bookingCode: 'PNH-2026-003', clientName: 'Sarah Jenkins (UK)',
+    timestamp: getRollingDate(4, '17:45:00'), title: 'Ghorepani Poon Hill Check-in',
+    description: 'Checked into Ghorepani Hotel. Ready for early 4:30 AM sunrise hike to Poon Hill.',
+    metadata: { paxSafe: 2, paxTotal: 2, weatherCondition: 'Clear skies', nextStop: 'Poon Hill Peak' },
+    acknowledged: true, priority: 'LOW'
   },
+  // Day 5: 5 days ago
+  {
+    id: 17, type: 'CHECK_IN', tourLeaderId: 4, tourLeaderName: 'Prakash Gurung',
+    bookingId: 2, bookingCode: 'PNH-2026-002', clientName: 'Hans Mueller (Germany)',
+    timestamp: getRollingDate(5, '15:15:00'), title: 'Himalaya Hotel Check-in',
+    description: 'Ascent from Bamboo completed in 4 hours. Group pace steady, enjoying rhododendron forest section.',
+    metadata: { paxSafe: 6, paxTotal: 6, weatherCondition: 'Sunny', nextStop: 'Deurali' },
+    acknowledged: true, priority: 'LOW'
+  },
+  {
+    id: 18, type: 'SPOT_EXPENSE', tourLeaderId: 4, tourLeaderName: 'Prakash Gurung',
+    bookingId: 2, bookingCode: 'PNH-2026-002', clientName: 'Hans Mueller (Germany)',
+    timestamp: getRollingDate(5, '10:30:00'), title: 'Spot Expense: NPR 2,400',
+    description: 'Heavy duty rain ponchos & waterproof pack covers purchased for group.',
+    metadata: { amount: 2400, category: 'Gear', paymentMethod: 'CASH' },
+    acknowledged: true, priority: 'LOW'
+  },
+  // Day 6: 6 days ago
+  {
+    id: 19, type: 'CHECK_IN', tourLeaderId: 4, tourLeaderName: 'Prakash Gurung',
+    bookingId: 2, bookingCode: 'PNH-2026-002', clientName: 'Hans Mueller (Germany)',
+    timestamp: getRollingDate(6, '16:50:00'), title: 'Chhomrong Village Check-in',
+    description: 'Departed Jhinu Danda hot springs and ascended stone steps to Chhomrong. All 6 clients feeling strong.',
+    metadata: { paxSafe: 6, paxTotal: 6, weatherCondition: 'Clear', nextStop: 'Bamboo' },
+    acknowledged: true, priority: 'LOW'
+  },
+  {
+    id: 20, type: 'STATUS_CHANGE', tourLeaderId: 4, tourLeaderName: 'Prakash Gurung',
+    bookingId: 2, bookingCode: 'PNH-2026-002', clientName: 'Hans Mueller (Germany)',
+    timestamp: getRollingDate(6, '09:00:00'), title: 'Kathmandu Departure Briefing',
+    description: 'Comprehensive gear check and orientation delivered at Thamel office. Private vehicle departed on schedule.',
+    metadata: { fromStatus: 'PROPOSED', toStatus: 'CONFIRMED' },
+    acknowledged: true, priority: 'LOW'
+  }
 ];
 
-const FIELD_ACTIVITY_STORAGE_KEY = 'paila_cms_field_activities';
+const FIELD_ACTIVITY_STORAGE_KEY = DB_KEYS.FIELD_ACTIVITIES || 'paila_cms_field_activities';
 
 export function FieldActivityProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -110,7 +232,16 @@ export function FieldActivityProvider({ children }: { children: ReactNode }) {
       const saved = localStorage.getItem(FIELD_ACTIVITY_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Check if parsed activities contain recent dates (within last 7 days)
+          const now = Date.now();
+          const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+          const hasRecent = parsed.some(a => {
+            const t = new Date(a.timestamp).getTime();
+            return !isNaN(t) && (now - t) < sevenDaysMs;
+          });
+          if (hasRecent) return parsed;
+        }
       }
     } catch {
       // ignore
@@ -130,7 +261,29 @@ export function FieldActivityProvider({ children }: { children: ReactNode }) {
     setLatestIncomingActivity(null);
   }, []);
 
+  const fetchFieldActivities = useCallback(async () => {
+    try {
+      const dbActivities = await apiClient.fieldActivities.getAll();
+      if (Array.isArray(dbActivities) && dbActivities.length > 0) {
+        setActivities(prev => {
+          const prevIds = new Set(prev.map(a => a.id));
+          const newlyAdded = dbActivities.find((a: FieldActivity) => !prevIds.has(a.id) && !a.acknowledged);
+          if (newlyAdded && user?.role !== 'TOUR_OPERATOR') {
+            sounds.notification();
+            setLatestIncomingActivity(newlyAdded);
+          }
+          return dbActivities;
+        });
+      }
+    } catch (err) {
+      console.warn('Field activities sync fallback:', err);
+    }
+  }, [user?.role]);
+
+  // Initial fetch and real-time polling every 2.5s
   useEffect(() => {
+    fetchFieldActivities();
+
     let channel: BroadcastChannel | null = null;
     try {
       if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
@@ -150,6 +303,8 @@ export function FieldActivityProvider({ children }: { children: ReactNode }) {
             }
           } else if (data?.type === 'ACK_FIELD_ACTIVITY' && data.id) {
             setActivities(prev => prev.map(a => a.id === data.id ? { ...a, acknowledged: true } : a));
+          } else if (data?.type === 'REFRESH_FIELD_ACTIVITIES') {
+            fetchFieldActivities();
           }
         };
       }
@@ -196,38 +351,60 @@ export function FieldActivityProvider({ children }: { children: ReactNode }) {
     window.addEventListener('storage', handleStorage);
     window.addEventListener('paila_field_activity_created' as any, handleCustomActivityEvent);
 
+    // Live background polling every 20s for sync
+    const pollInterval = setInterval(() => {
+      fetchFieldActivities();
+    }, 20000);
+
     return () => {
       if (channel) channel.close();
       window.removeEventListener('storage', handleStorage);
       window.removeEventListener('paila_field_activity_created' as any, handleCustomActivityEvent);
+      clearInterval(pollInterval);
     };
-  }, [user?.role]);
+  }, [fetchFieldActivities, user?.role]);
 
-  const addActivity = (activity: Omit<FieldActivity, 'id' | 'timestamp' | 'acknowledged'>) => {
-    const newActivity: FieldActivity = {
-      ...activity,
-      id: Date.now(),
-      timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
-      acknowledged: false,
-    };
-    setActivities(prev => [newActivity, ...prev]);
+  const addActivity = async (activity: Omit<FieldActivity, 'id' | 'timestamp' | 'acknowledged'>): Promise<FieldActivity> => {
+    let created: FieldActivity;
+    try {
+      created = await apiClient.fieldActivities.create({
+        ...activity,
+        acknowledged: false,
+      });
+    } catch {
+      created = {
+        ...activity,
+        id: Date.now(),
+        timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
+        acknowledged: false,
+      };
+    }
+
+    setActivities(prev => [created, ...prev.filter(a => a.id !== created.id)]);
 
     try {
       if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
         const ch = new BroadcastChannel('paila_realtime_field_activities');
-        ch.postMessage({ type: 'NEW_FIELD_ACTIVITY', activity: newActivity });
+        ch.postMessage({ type: 'NEW_FIELD_ACTIVITY', activity: created });
         setTimeout(() => ch.close(), 100);
       }
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('paila_field_activity_created', { detail: newActivity }));
+        window.dispatchEvent(new CustomEvent('paila_field_activity_created', { detail: created }));
       }
     } catch {
       // ignore
     }
+
+    return created;
   };
 
-  const acknowledgeActivity = (id: number) => {
+  const acknowledgeActivity = async (id: number): Promise<void> => {
     setActivities(prev => prev.map(a => a.id === id ? { ...a, acknowledged: true } : a));
+    try {
+      await apiClient.fieldActivities.acknowledge(id);
+    } catch (err) {
+      console.warn('Failed to acknowledge field activity on server:', err);
+    }
     try {
       if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
         const ch = new BroadcastChannel('paila_realtime_field_activities');
@@ -237,6 +414,10 @@ export function FieldActivityProvider({ children }: { children: ReactNode }) {
     } catch {
       // ignore
     }
+  };
+
+  const refreshActivities = async () => {
+    await fetchFieldActivities();
   };
 
   const resetToZeroState = () => {
@@ -270,6 +451,7 @@ export function FieldActivityProvider({ children }: { children: ReactNode }) {
       clearLatestIncomingActivity,
       addActivity,
       acknowledgeActivity,
+      refreshActivities,
       resetToZeroState,
       getActivitiesByTourLeader,
       getActivitiesByBooking,

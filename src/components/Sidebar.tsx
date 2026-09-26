@@ -7,7 +7,7 @@ import DatabaseStatusBulbs from './DatabaseStatusBulbs';
 import { UserRole } from '../types';
 import {
   LayoutDashboard, CalendarPlus, CalendarDays, Map, Building2,
-  Wallet, Users, LogOut, Mountain, ChevronLeft, ChevronRight, Navigation, Activity, TrendingUp, Bell, Settings
+  Wallet, Users, LogOut, Mountain, ChevronLeft, ChevronRight, ChevronDown, Navigation, Activity, TrendingUp, Bell, Settings
 } from 'lucide-react';
 import { useState } from 'react';
 import { sounds } from '../utils/sounds';
@@ -22,6 +22,7 @@ interface NavItem {
   label: string;
   icon: React.ReactNode;
   roles: UserRole[];
+  subItems?: { id: string; label: string; roles: UserRole[] }[];
 }
 
 const navItems: NavItem[] = [
@@ -29,13 +30,22 @@ const navItems: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} />, roles: ['SUPER_ADMIN', 'SALES', 'OPERATIONS'] },
   { id: 'field-activity', label: 'Field Activity', icon: <Activity size={20} />, roles: ['SUPER_ADMIN'] },
   { id: 'alerts', label: 'Alerts', icon: <Bell size={20} />, roles: ['SUPER_ADMIN', 'OPERATIONS'] },
-  { id: 'new-booking', label: 'New Booking', icon: <CalendarPlus size={20} />, roles: ['SUPER_ADMIN', 'SALES'] },
-  { id: 'bookings', label: 'Bookings', icon: <CalendarDays size={20} />, roles: ['SUPER_ADMIN', 'SALES', 'OPERATIONS'] },
+  { 
+    id: 'bookings-parent', 
+    label: 'Bookings', 
+    icon: <CalendarDays size={20} />, 
+    roles: ['SUPER_ADMIN', 'SALES', 'OPERATIONS'],
+    subItems: [
+      { id: 'bookings', label: 'All Bookings', roles: ['SUPER_ADMIN', 'SALES', 'OPERATIONS'] },
+      { id: 'new-booking', label: 'Add New', roles: ['SUPER_ADMIN', 'SALES'] },
+    ]
+  },
+  { id: 'packages', label: 'Packages', icon: <Mountain size={20} />, roles: ['SUPER_ADMIN', 'SALES'] },
+  { id: 'itinerary', label: 'Itinerary', icon: <Map size={20} />, roles: ['SUPER_ADMIN', 'SALES', 'OPERATIONS'] },
   { id: 'operations', label: 'Operations', icon: <Map size={20} />, roles: ['SUPER_ADMIN', 'OPERATIONS'] },
   { id: 'vendors', label: 'Vendors', icon: <Building2 size={20} />, roles: ['SUPER_ADMIN', 'OPERATIONS'] },
   { id: 'accounts-payable', label: 'Accounts Payable', icon: <Wallet size={20} />, roles: ['SUPER_ADMIN'] },
   { id: 'accounts-receivable', label: 'Accounts Receivable', icon: <TrendingUp size={20} />, roles: ['SUPER_ADMIN'] },
-  { id: 'packages', label: 'Packages', icon: <Mountain size={20} />, roles: ['SUPER_ADMIN', 'SALES'] },
   { id: 'users', label: 'Users', icon: <Users size={20} />, roles: ['SUPER_ADMIN'] },
   { id: 'settings', label: 'Settings', icon: <Settings size={20} />, roles: ['SUPER_ADMIN'] },
 ];
@@ -46,13 +56,21 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
   const { getUnacknowledgedCount } = useFieldActivity();
   const { unreadCount: alertCount } = useAlerts();
   const [collapsed, setCollapsed] = useState(false);
+  const [expandedMenus, setExpandedMenus] = useState<string[]>(['bookings-parent']);
 
   if (!user) return null;
+
+  const toggleMenu = (id: string) => {
+    sounds.click();
+    setExpandedMenus(prev => 
+      prev.includes(id) ? prev.filter(m => m !== id) : [...prev, id]
+    );
+  };
 
   const filteredNav = navItems.filter(item => hasAccess(user.role, item.roles));
   const unacknowledgedCount = getUnacknowledgedCount();
 
-  const brandInitials = settings.companyName
+  const brandInitials = (settings?.companyName || 'Paila Nepal')
     .split(' ')
     .filter(Boolean)
     .slice(0, 2)
@@ -105,40 +123,82 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 py-4 overflow-y-auto">
-        {filteredNav.map(item => (
-          <button
-            key={item.id}
-            onClick={() => {
-              sounds.click();
-              onNavigate(item.id);
-            }}
-            className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition-all rounded-xl mx-2 mb-1
-              ${currentPage === item.id
-                ? 'bg-white/15 text-white shadow-lg shadow-black/10 border-l-4 border-[#f35500]'
-                : 'text-blue-100 hover:bg-white/8 hover:text-white'
-              }`}
-          >
-            <span className="shrink-0 relative">
-              {item.icon}
-              {item.id === 'field-activity' && unacknowledgedCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[9px] font-bold flex items-center justify-center animate-pulse">
-                  {unacknowledgedCount > 9 ? '9+' : unacknowledgedCount}
+      <nav className="flex-1 py-4 overflow-y-auto no-scrollbar">
+        {filteredNav.map(item => {
+          const hasSubItems = item.subItems && item.subItems.length > 0;
+          const isExpanded = expandedMenus.includes(item.id);
+          const isActive = currentPage === item.id || (hasSubItems && item.subItems?.some(sub => sub.id === currentPage));
+
+          return (
+            <div key={item.id} className="mx-2 mb-1">
+              <button
+                onClick={() => {
+                  if (hasSubItems) {
+                    toggleMenu(item.id);
+                    if (collapsed) setCollapsed(false);
+                  } else {
+                    sounds.click();
+                    onNavigate(item.id);
+                  }
+                }}
+                className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition-all rounded-xl
+                  ${(currentPage === item.id && !hasSubItems) || (isActive && hasSubItems && !isExpanded)
+                    ? 'bg-white/15 text-white shadow-lg shadow-black/10 border-l-4 border-[#f35500]'
+                    : 'text-blue-100 hover:bg-white/8 hover:text-white'
+                  }`}
+              >
+                <span className="shrink-0 relative">
+                  {item.icon}
+                  {item.id === 'field-activity' && unacknowledgedCount > 0 && (
+                    <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[9px] font-bold flex items-center justify-center animate-pulse">
+                      {unacknowledgedCount > 9 ? '9+' : unacknowledgedCount}
+                    </span>
+                  )}
                 </span>
-              )}
-            </span>
-            {!collapsed && (
-              <span className="animate-slide-in flex items-center gap-2 flex-1 font-medium">
-                {item.label}
-                {item.id === 'field-activity' && unacknowledgedCount > 0 && (
-                  <span className="px-1.5 py-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full">
-                    {unacknowledgedCount}
-                  </span>
+                {!collapsed && (
+                  <div className="flex items-center justify-between flex-1 font-medium">
+                    <span className="animate-slide-in flex items-center gap-2">
+                      {item.label}
+                      {item.id === 'field-activity' && unacknowledgedCount > 0 && (
+                        <span className="px-1.5 py-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full">
+                          {unacknowledgedCount}
+                        </span>
+                      )}
+                    </span>
+                    {hasSubItems && (
+                      <span className="text-blue-300">
+                        {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                      </span>
+                    )}
+                  </div>
                 )}
-              </span>
-            )}
-          </button>
-        ))}
+              </button>
+
+              {/* Sub Items */}
+              {hasSubItems && isExpanded && !collapsed && (
+                <div className="mt-1 ml-4 space-y-1 animate-in fade-in slide-in-from-top-1 duration-200">
+                  {item.subItems?.filter(sub => hasAccess(user.role, sub.roles)).map(sub => (
+                    <button
+                      key={sub.id}
+                      onClick={() => {
+                        sounds.click();
+                        onNavigate(sub.id);
+                      }}
+                      className={`w-full flex items-center gap-3 px-4 py-2 text-[13px] transition-all rounded-lg
+                        ${currentPage === sub.id
+                          ? 'bg-white/10 text-white font-bold'
+                          : 'text-blue-200 hover:bg-white/5 hover:text-white'
+                        }`}
+                    >
+                      <div className={`w-1.5 h-1.5 rounded-full transition-all ${currentPage === sub.id ? 'bg-[#f35500]' : 'bg-blue-400/40'}`} />
+                      {sub.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </nav>
 
       {/* User Info & Theme */}
@@ -153,7 +213,7 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
             <div className="flex items-center gap-3 mb-2 p-2 rounded-xl bg-white/5">
               <div className="relative">
                 <div className="w-10 h-10 bg-gradient-to-br from-[#f35500] to-[#d94b00] rounded-full flex items-center justify-center text-sm font-bold shadow-lg">
-                  {user.name.split(' ').map(n => n[0]).join('')}
+                  {(user?.name || 'User').split(' ').filter(Boolean).map(n => n[0]).join('') || 'U'}
                 </div>
                 <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full ring-2 ring-white"></div>
               </div>

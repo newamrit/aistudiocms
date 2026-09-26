@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Database, Wifi, WifiOff, RefreshCw, CheckCircle2, AlertCircle, Clock, Server, CloudUpload, ArrowRight, X } from 'lucide-react';
+import { Database, Wifi, WifiOff, RefreshCw, CheckCircle2, AlertCircle, Clock, Server, CloudUpload, ArrowRight, X, Activity } from 'lucide-react';
 import { SyncQueue, SyncManager, Connectivity } from '../utils/offlineDB';
 import { sounds } from '../utils/sounds';
+import OfflineSyncLog from './OfflineSyncLog';
 
 export type SyncStatusType = 'up-to-date' | 'syncing' | 'offline' | 'pending';
 
@@ -29,6 +30,7 @@ export default function DatabaseStatusBulbs({
   const [internalPendingCount, setInternalPendingCount] = useState<number>(0);
   const [internalIsSyncing, setInternalIsSyncing] = useState<boolean>(false);
   const [showPopup, setShowPopup] = useState<boolean>(false);
+  const [showSyncLogModal, setShowSyncLogModal] = useState<boolean>(false);
   const [lastSyncTime, setLastSyncTime] = useState<string>('Just now');
   const popupRef = useRef<HTMLDivElement>(null);
 
@@ -135,35 +137,35 @@ export default function DatabaseStatusBulbs({
         type="button"
         onClick={interactive ? () => { sounds.click(); setShowPopup(prev => !prev); } : undefined}
         disabled={!interactive}
-        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full transition-all select-none ${
+        className={`flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-full transition-all select-none scale-90 sm:scale-100 origin-right ${
           interactive ? 'cursor-pointer active:scale-95' : 'cursor-default'
         } ${
           isDark 
-            ? 'bg-slate-900/80 border border-slate-700/80 shadow-2xs hover:border-slate-600 hover:bg-slate-900' 
-            : 'bg-white/90 dark:bg-slate-900/90 border border-slate-200/90 dark:border-slate-700/90 shadow-2xs backdrop-blur-xs hover:border-slate-300 dark:hover:border-slate-600'
+            ? 'bg-white/15 hover:bg-white/25 border border-white/30 shadow-md backdrop-blur-md text-white' 
+            : 'bg-white/95 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-700 shadow-xs backdrop-blur-xs hover:border-slate-300 dark:hover:border-slate-600'
         }`}
         title={interactive ? `Database & Sync: ${syncState.toUpperCase()} (Click to view details)` : undefined}
         aria-label="Database & Sync Status"
       >
         {/* Bulb 1: Primary Database Engine Connection */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
           <div className="relative flex items-center justify-center">
             {!isDbConnected && (
-              <div className="absolute w-2.5 h-2.5 rounded-full bg-rose-500/40 animate-ping" />
+              <div className="absolute w-3.5 h-3.5 rounded-full bg-rose-500/50 animate-ping" />
             )}
             <div 
-              className={`w-2 h-2 rounded-full transition-all duration-300 relative z-10 ${
+              className={`w-2.5 h-2.5 rounded-full transition-all duration-300 relative z-10 ${
                 isDbConnected 
-                  ? 'bg-emerald-400 shadow-[0_0_6px_#22c55e] ring-1 ring-emerald-400/40' 
-                  : 'bg-rose-500 shadow-[0_0_6px_#ef4444] ring-1 ring-rose-400/40 animate-pulse'
+                  ? 'bg-emerald-400 shadow-[0_0_8px_#22c55e] ring-1.5 ring-emerald-400/50' 
+                  : 'bg-rose-500 shadow-[0_0_8px_#ef4444] ring-1.5 ring-rose-400/50 animate-pulse'
               }`}
             />
           </div>
           {!compact && (
-            <span className={`text-[9px] font-bold uppercase tracking-wider leading-none ${
+            <span className={`hidden sm:inline text-[10px] font-black uppercase tracking-wider leading-none ${
               isDbConnected 
-                ? (isDark ? 'text-emerald-400' : 'text-emerald-700 dark:text-emerald-400') 
-                : (isDark ? 'text-rose-400' : 'text-rose-600 dark:text-rose-400')
+                ? (isDark ? 'text-emerald-300 drop-shadow-xs' : 'text-emerald-700 dark:text-emerald-400') 
+                : (isDark ? 'text-rose-300' : 'text-rose-600 dark:text-rose-400')
             }`}>
               DB
             </span>
@@ -171,48 +173,48 @@ export default function DatabaseStatusBulbs({
         </div>
 
         {/* Divider line between the two bulbs */}
-        <div className={`h-3 w-px ${isDark ? 'bg-white/20' : 'bg-slate-300 dark:bg-slate-700'}`} />
+        <div className={`h-3.5 w-px ${isDark ? 'bg-white/30' : 'bg-slate-300 dark:bg-slate-700'}`} />
 
         {/* Bulb 2: Live Gateway / Cloud Sync Connection */}
         <div className="flex items-center gap-1.5">
           <div className="relative flex items-center justify-center">
             {/* Ping aura when offline or syncing */}
             {syncState === 'offline' && (
-              <div className="absolute w-3 h-3 rounded-full bg-rose-500/50 animate-ping" />
+              <div className="absolute w-3.5 h-3.5 rounded-full bg-rose-500/50 animate-ping" />
             )}
             {syncState === 'syncing' && (
-              <div className="absolute w-3 h-3 rounded-full bg-amber-400/50 animate-ping" />
+              <div className="absolute w-3.5 h-3.5 rounded-full bg-amber-400/50 animate-ping" />
             )}
             
             {/* Glowing Bulb Core with distinct states */}
             <div 
-              className={`w-2 h-2 rounded-full transition-all duration-300 relative z-10 ${
+              className={`w-2.5 h-2.5 rounded-full transition-all duration-300 relative z-10 ${
                 syncState === 'up-to-date'
-                  ? 'bg-emerald-400 shadow-[0_0_6px_#22c55e] ring-1 ring-emerald-400/40'
+                  ? 'bg-emerald-400 shadow-[0_0_8px_#22c55e] ring-1.5 ring-emerald-400/50'
                   : syncState === 'syncing'
-                  ? 'bg-amber-400 shadow-[0_0_8px_#f59e0b] ring-1 ring-amber-400/50 animate-pulse'
+                  ? 'bg-amber-400 shadow-[0_0_10px_#f59e0b] ring-1.5 ring-amber-400/60 animate-pulse'
                   : syncState === 'pending'
-                  ? 'bg-amber-400 shadow-[0_0_6px_#f59e0b] ring-1 ring-amber-400/40'
-                  : 'bg-rose-500 shadow-[0_0_8px_#ef4444] ring-1 ring-rose-400/40 animate-pulse'
+                  ? 'bg-amber-400 shadow-[0_0_8px_#f59e0b] ring-1.5 ring-amber-400/50'
+                  : 'bg-rose-500 shadow-[0_0_10px_#ef4444] ring-1.5 ring-rose-400/60 animate-pulse'
               }`}
             />
           </div>
 
           {!compact && (
             <div className="flex items-center gap-1">
-              <span className={`text-[9px] font-bold uppercase tracking-wider leading-none ${
+              <span className={`hidden sm:inline text-[10px] font-black uppercase tracking-wider leading-none ${
                 syncState === 'up-to-date'
-                  ? (isDark ? 'text-emerald-400' : 'text-emerald-700 dark:text-emerald-400')
+                  ? (isDark ? 'text-emerald-300 drop-shadow-xs' : 'text-emerald-700 dark:text-emerald-400')
                   : syncState === 'syncing' || syncState === 'pending'
-                  ? (isDark ? 'text-amber-400' : 'text-amber-700 dark:text-amber-400')
-                  : (isDark ? 'text-rose-400' : 'text-rose-600 dark:text-rose-400')
+                  ? (isDark ? 'text-amber-300' : 'text-amber-700 dark:text-amber-400')
+                  : (isDark ? 'text-rose-300' : 'text-rose-600 dark:text-rose-400')
               }`}>
                 {syncState === 'syncing' ? 'SYNCING' : syncState === 'offline' ? 'OFFLINE' : 'SYNC'}
               </span>
 
               {/* Pending Queue Count Badge */}
               {pendingCount > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full text-[8px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
+                <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-amber-500/30 text-amber-200 border border-amber-400/60 animate-pulse">
                   {pendingCount}
                 </span>
               )}
@@ -309,18 +311,56 @@ export default function DatabaseStatusBulbs({
                   </span>
                 </div>
 
-                {/* Manual Sync Trigger Button when items are pending */}
-                {isOnline && pendingCount > 0 && (
+                {/* Manual Sync Trigger Button */}
+                {isOnline && (
                   <button
                     type="button"
-                    onClick={handleManualSync}
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      sounds.click();
+                      if (pendingCount > 0) {
+                        await handleManualSync(e);
+                      } else {
+                        setInternalIsSyncing(true);
+                        SyncManager.notifyProgress({
+                          stage: 'reconnecting',
+                          progress: 20,
+                          current: 0,
+                          total: 0,
+                          message: 'Reconnected • Synchronizing cloud database...',
+                          timestamp: Date.now(),
+                        });
+                        try {
+                          await SyncManager.processQueue();
+                          setLastSyncTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+                          sounds.success();
+                        } finally {
+                          setInternalIsSyncing(false);
+                        }
+                      }
+                    }}
                     disabled={isSyncing}
-                    className="w-full mt-2.5 py-1.5 px-3 bg-gradient-to-r from-[#f35500] to-[#d94b00] hover:from-[#e04e00] hover:to-[#c44300] text-white font-bold text-xs rounded-lg shadow-md flex items-center justify-center gap-1.5 active:scale-95 transition-all"
+                    className="w-full mt-2.5 py-1.5 px-3 bg-gradient-to-r from-[#f35500] to-[#d94b00] hover:from-[#e04e00] hover:to-[#c44300] text-white font-bold text-xs rounded-lg shadow-md flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
                   >
                     <RefreshCw size={13} className={isSyncing ? 'animate-spin' : ''} />
-                    <span>{isSyncing ? 'Syncing Queue...' : 'Sync Now'}</span>
+                    <span>{isSyncing ? 'Syncing...' : pendingCount > 0 ? 'Sync Pending Queue' : 'Test Reconnect Sync'}</span>
                   </button>
                 )}
+                {/* View Offline Sync Log Button */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    sounds.click();
+                    setShowPopup(false);
+                    setShowSyncLogModal(true);
+                  }}
+                  className="w-full mt-2 py-1.5 px-3 bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-slate-200 hover:text-white font-semibold text-xs rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  title="View history of successful and failed background sync attempts"
+                >
+                  <Activity size={13} className="text-blue-400" />
+                  <span>View Offline Sync Log</span>
+                </button>
               </div>
             </div>
 
@@ -334,6 +374,12 @@ export default function DatabaseStatusBulbs({
           </div>
         </>
       )}
+
+      {/* Standalone Offline Sync Log Modal */}
+      <OfflineSyncLog
+        isOpen={showSyncLogModal}
+        onClose={() => setShowSyncLogModal(false)}
+      />
     </div>
   );
 }

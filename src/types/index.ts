@@ -228,6 +228,7 @@ export interface Alert {
   tour_leader_phone?: string;
   booking_code?: string;
   client_name?: string;
+  is_system_offline_alert?: boolean;
 }
 
 export interface SystemBackupData {

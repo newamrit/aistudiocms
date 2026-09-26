@@ -12,6 +12,9 @@ import { CompanySettingsProvider, useCompanySettings } from './contexts/CompanyS
 import { BackupProvider } from './contexts/BackupContext';
 import ThemeToggle from './components/ThemeToggle';
 import DatabaseStatusBulbs from './components/DatabaseStatusBulbs';
+import SyncProgressBar from './components/SyncProgressBar';
+import NotificationBell from './components/NotificationBell';
+import VolumeControl from './components/VolumeControl';
 import { SessionTimeoutModal } from './components/SessionTimeoutModal';
 import { useSessionTimeout } from './hooks/useSessionTimeout';
 import Sidebar from './components/Sidebar';
@@ -30,6 +33,7 @@ import TourLeaderPortal from './pages/TourLeaderPortal';
 import FieldActivity from './pages/FieldActivity';
 import Alerts from './pages/Alerts';
 import SettingsPage from './pages/Settings';
+import ItineraryBuilder from './pages/ItineraryBuilder';
 import { Settings as SettingsIcon, AlertTriangle, AlertCircle, ArrowRight, X, Compass, MapPin } from 'lucide-react';
 
 function AppContent() {
@@ -114,6 +118,8 @@ function AppContent() {
         return <FieldActivity />;
       case 'alerts':
         return <Alerts />;
+      case 'itinerary':
+        return <ItineraryBuilder onNavigate={handleNavigate} />;
       case 'settings':
         return <SettingsPage onNavigate={handleNavigate} />;
       default:
@@ -129,45 +135,45 @@ function AppContent() {
       <main className="flex-1 overflow-auto relative">
         {/* Real-Time Live Emergency Alert Toast for Admin & Ops */}
         {!isTourLeader && latestIncomingAlert && (
-          <div className="fixed top-4 right-6 z-50 max-w-md w-full bg-slate-950 text-white p-4 rounded-2xl shadow-2xl border-2 border-red-500/80 animate-in fade-in slide-in-from-top-4 duration-300 backdrop-blur-md">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-red-600/30 flex items-center justify-center text-red-400 shrink-0 mt-0.5">
+          <div className="fixed top-2 sm:top-4 right-2 sm:right-6 z-50 max-w-[calc(100vw-16px)] sm:max-w-md w-full bg-slate-950 text-white p-3 sm:p-4 rounded-xl sm:rounded-2xl shadow-2xl border-2 border-red-500/80 animate-in fade-in slide-in-from-top-4 duration-300 backdrop-blur-md">
+            <div className="flex items-start gap-2 sm:gap-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-red-600/30 flex items-center justify-center text-red-400 shrink-0 mt-0.5">
                 {latestIncomingAlert.severity === 'CRITICAL' ? (
-                  <AlertCircle size={22} className="animate-pulse" />
+                  <AlertCircle size={18} className="sm:size-[22px] animate-pulse" />
                 ) : (
-                  <AlertTriangle size={22} />
+                  <AlertTriangle size={18} className="sm:size-[22px]" />
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className={`text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-wider ${
+                <div className="flex items-center gap-2 mb-0.5 sm:mb-1">
+                  <span className={`text-[8px] sm:text-[10px] font-black px-1.5 sm:px-2 py-0.5 rounded uppercase tracking-wider ${
                     latestIncomingAlert.severity === 'CRITICAL' ? 'bg-red-600 text-white' : 'bg-amber-500 text-black'
                   }`}>
                     {latestIncomingAlert.severity} ALERT
                   </span>
-                  <span className="text-xs text-slate-400">Live from Field</span>
+                  <span className="text-[10px] text-slate-400">Live Field Update</span>
                 </div>
-                <h4 className="text-sm font-bold text-white leading-snug">{latestIncomingAlert.title}</h4>
-                <p className="text-xs text-slate-300 mt-1 line-clamp-2">{latestIncomingAlert.description}</p>
-                <div className="mt-2 text-[11px] text-slate-400 flex flex-wrap items-center gap-2">
-                  <span>Leader: <strong className="text-slate-200">{latestIncomingAlert.tour_leader_name || 'Tour Leader'}</strong></span>
+                <h4 className="text-xs sm:text-sm font-bold text-white leading-tight truncate">{latestIncomingAlert.title}</h4>
+                <p className="text-[11px] text-slate-300 mt-0.5 line-clamp-1 sm:line-clamp-2">{latestIncomingAlert.description}</p>
+                <div className="mt-1 sm:mt-2 text-[10px] sm:text-[11px] text-slate-400 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <span className="truncate max-w-[150px]">Leader: <strong className="text-slate-200">{latestIncomingAlert.tour_leader_name || 'Tour Leader'}</strong></span>
                   {latestIncomingAlert.booking_code && (
-                    <span>• {latestIncomingAlert.booking_code}</span>
+                    <span className="shrink-0">• {latestIncomingAlert.booking_code}</span>
                   )}
                 </div>
-                <div className="flex items-center gap-2 mt-3 pt-2 border-t border-slate-800">
+                <div className="flex items-center gap-2 mt-2 sm:mt-3 pt-2 border-t border-slate-800">
                   <button
                     onClick={() => {
                       handleNavigate('alerts');
                       clearLatestIncomingAlert();
                     }}
-                    className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 active:scale-95 shadow-lg shadow-red-900/30"
+                    className="px-2.5 py-1 sm:px-3 sm:py-1.5 bg-red-600 hover:bg-red-500 text-white text-[10px] sm:text-xs font-bold rounded-lg sm:rounded-xl transition-all flex items-center gap-1 active:scale-95 shadow-lg shadow-red-900/30"
                   >
-                    View in Alerts <ArrowRight size={13} />
+                    View Alerts <ArrowRight size={12} />
                   </button>
                   <button
                     onClick={clearLatestIncomingAlert}
-                    className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition-colors"
+                    className="px-2 py-1 sm:px-2.5 sm:py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] sm:text-xs font-semibold rounded-lg sm:rounded-xl transition-colors"
                   >
                     Dismiss
                   </button>
@@ -177,7 +183,7 @@ function AppContent() {
                 onClick={clearLatestIncomingAlert}
                 className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors shrink-0"
               >
-                <X size={16} />
+                <X size={14} className="sm:size-[16px]" />
               </button>
             </div>
           </div>
@@ -185,46 +191,43 @@ function AppContent() {
 
         {/* Real-Time Live Daily Update / Field Activity Toast for Admin & Ops */}
         {!isTourLeader && !latestIncomingAlert && latestIncomingActivity && (
-          <div className="fixed top-4 right-6 z-50 max-w-md w-full bg-slate-900/95 text-white p-4 rounded-2xl shadow-2xl border-2 border-emerald-500/80 animate-in fade-in slide-in-from-top-4 duration-300 backdrop-blur-md">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0 mt-0.5 border border-emerald-500/30">
+          <div className="fixed top-2 sm:top-4 right-2 sm:right-6 z-50 max-w-[calc(100vw-16px)] sm:max-w-md w-full bg-slate-900/95 text-white p-3 sm:p-4 rounded-xl sm:rounded-2xl shadow-2xl border-2 border-emerald-500/80 animate-in fade-in slide-in-from-top-4 duration-300 backdrop-blur-md">
+            <div className="flex items-start gap-2 sm:gap-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0 mt-0.5 border border-emerald-500/30">
                 {latestIncomingActivity.type === 'CHECK_IN' ? (
-                  <Compass size={22} className="animate-spin-slow text-emerald-400" />
+                  <Compass size={18} className="sm:size-[22px] animate-spin-slow text-emerald-400" />
                 ) : (
-                  <MapPin size={22} className="text-emerald-400" />
+                  <MapPin size={18} className="sm:size-[22px] text-emerald-400" />
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-wider bg-emerald-500 text-slate-950">
-                    {latestIncomingActivity.type === 'CHECK_IN' ? 'DAILY UPDATE' : 'FIELD ACTIVITY'}
+                <div className="flex items-center gap-2 mb-0.5 sm:mb-1">
+                  <span className="text-[8px] sm:text-[10px] font-black px-1.5 sm:px-2 py-0.5 rounded uppercase tracking-wider bg-emerald-500 text-slate-950">
+                    {latestIncomingActivity.type === 'CHECK_IN' ? 'CHECK-IN' : 'ACTIVITY'}
                   </span>
-                  <span className="text-xs text-slate-400">Live Checkpoint</span>
+                  <span className="text-[10px] text-slate-400">Live Field Check</span>
                 </div>
-                <h4 className="text-sm font-bold text-white leading-snug">{latestIncomingActivity.title}</h4>
-                <p className="text-xs text-slate-300 mt-1 line-clamp-2">{latestIncomingActivity.description}</p>
-                <div className="mt-2 text-[11px] text-slate-400 flex flex-wrap items-center gap-2">
-                  <span>Leader: <strong className="text-slate-200">{latestIncomingActivity.tourLeaderName}</strong></span>
+                <h4 className="text-xs sm:text-sm font-bold text-white leading-tight truncate">{latestIncomingActivity.title}</h4>
+                <p className="text-[11px] text-slate-300 mt-0.5 line-clamp-1 sm:line-clamp-2">{latestIncomingActivity.description}</p>
+                <div className="mt-1 sm:mt-2 text-[10px] sm:text-[11px] text-slate-400 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <span className="truncate max-w-[150px]">Leader: <strong className="text-slate-200">{latestIncomingActivity.tourLeaderName}</strong></span>
                   {latestIncomingActivity.bookingCode && (
-                    <span>• {latestIncomingActivity.bookingCode}</span>
-                  )}
-                  {latestIncomingActivity.metadata?.weather && (
-                    <span>• {latestIncomingActivity.metadata.weather}</span>
+                    <span className="shrink-0">• {latestIncomingActivity.bookingCode}</span>
                   )}
                 </div>
-                <div className="flex items-center gap-2 mt-3 pt-2 border-t border-slate-800">
+                <div className="flex items-center gap-2 mt-2 sm:mt-3 pt-2 border-t border-slate-800">
                   <button
                     onClick={() => {
                       handleNavigate('field-activity');
                       clearLatestIncomingActivity();
                     }}
-                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 active:scale-95 shadow-lg shadow-emerald-900/30"
+                    className="px-2.5 py-1 sm:px-3 sm:py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] sm:text-xs font-bold rounded-lg sm:rounded-xl transition-all flex items-center gap-1 active:scale-95 shadow-lg shadow-emerald-900/30"
                   >
-                    View in Field Activity <ArrowRight size={13} />
+                    View Field <ArrowRight size={12} />
                   </button>
                   <button
                     onClick={clearLatestIncomingActivity}
-                    className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition-colors"
+                    className="px-2 py-1 sm:px-2.5 sm:py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] sm:text-xs font-semibold rounded-lg sm:rounded-xl transition-colors"
                   >
                     Dismiss
                   </button>
@@ -234,7 +237,7 @@ function AppContent() {
                 onClick={clearLatestIncomingActivity}
                 className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors shrink-0"
               >
-                <X size={16} />
+                <X size={14} className="sm:size-[16px]" />
               </button>
             </div>
           </div>
@@ -242,9 +245,9 @@ function AppContent() {
 
         {/* Top Bar - Hidden for Tour Leaders */}
         {!isTourLeader && (
-          <header className="bg-white dark:bg-[#111c30] border-b border-slate-200 dark:border-[#22324b] px-6 py-3 flex items-center justify-between no-print sticky top-0 z-20 shadow-2xs">
-            <div className="flex items-center gap-3">
-              <h2 className="text-sm font-bold text-slate-700 dark:text-slate-200 capitalize">
+          <header className="bg-white dark:bg-[#111c30] border-b border-slate-200 dark:border-[#22324b] px-3 sm:px-6 py-2 sm:py-3 flex items-center justify-between no-print sticky top-0 z-20 shadow-2xs">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+              <h2 className="text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 capitalize truncate">
                 {currentPage === 'accounts-payable' ? 'Accounts Payable' :
                  currentPage === 'accounts-receivable' ? 'Accounts Receivable' :
                  currentPage === 'field-activity' ? 'Field Activity Monitor' :
@@ -252,30 +255,56 @@ function AppContent() {
                  currentPage.replace(/-/g, ' ')}
               </h2>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+              {/* Global Non-Intrusive Sync Progress Bar in Top Bar */}
+              <SyncProgressBar theme="auto" showBadge={false} />
+
               {/* Database & Sync Status Glowing Bulbs */}
-              <DatabaseStatusBulbs />
+              <div className="shrink-0">
+                <DatabaseStatusBulbs />
+              </div>
 
               <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 hidden sm:block" />
+
+              {/* Notification Center Bell */}
+              <div>
+                <NotificationBell onNavigate={handleNavigate} />
+              </div>
+
+              {/* System Volume & Mute Controls */}
+              <div className="hidden sm:block">
+                <VolumeControl />
+              </div>
+
+              <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 hidden md:block" />
 
               {/* Quick Settings Shortcut for Super Admin */}
               {user?.role === 'SUPER_ADMIN' && currentPage !== 'settings' && (
                 <button
                   onClick={() => handleNavigate('settings')}
-                  className="hidden md:flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-paila-blue dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                  className="hidden md:flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300 hover:text-paila-blue dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                   title="Configure Company Name, PAN/VAT, Domain, Phone & Address"
                 >
-                  <SettingsIcon size={13} />
+                  <SettingsIcon size={12} />
                   Settings
                 </button>
               )}
 
               {/* Theme Selector Toggle */}
-              <ThemeToggle variant="dropdown" />
+              <div>
+                <ThemeToggle variant="dropdown" />
+              </div>
               
-              <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 hidden sm:block" />
+              <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 hidden lg:block" />
               
-              <span className="text-xs text-slate-400 hidden sm:inline">{settings.companyName} © {new Date().getFullYear()}</span>
+              <span className="text-[10px] text-slate-400 hidden lg:inline">{settings.companyName} © {new Date().getFullYear()}</span>
+
+              {/* Mobile User Identity (Visible only on very small screens where sidebar might be tucked) */}
+              <div className="flex sm:hidden items-center ml-1">
+                <div className="w-7 h-7 bg-gradient-to-br from-[#f35500] to-[#d94b00] rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-sm">
+                  {(user?.name || 'User').split(' ').filter(Boolean).map(n => n[0]).join('')}
+                </div>
+              </div>
             </div>
           </header>
         )}

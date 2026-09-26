@@ -343,8 +343,11 @@ export default function NewBooking({ onNavigate }: NewBookingProps) {
               <label className="block text-sm font-medium text-slate-700 mb-1.5">Number of Pax</label>
               <input
                 type="number"
-                value={paxCount}
-                onChange={e => setPaxCount(Number(e.target.value))}
+                value={Number.isFinite(paxCount) ? paxCount : 1}
+                onChange={e => {
+                  const val = Number(e.target.value);
+                  setPaxCount(Number.isFinite(val) ? Math.max(1, val) : 1);
+                }}
                 min={1}
                 className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-paila-blue/20 focus:border-paila-blue outline-none"
               />
@@ -353,8 +356,11 @@ export default function NewBooking({ onNavigate }: NewBookingProps) {
               <label className="block text-sm font-medium text-slate-700 mb-1.5">Total Agreed Amount (NPR)</label>
               <input
                 type="number"
-                value={totalAmount}
-                onChange={e => setTotalAmount(Number(e.target.value))}
+                value={Number.isFinite(totalAmount) ? totalAmount : 0}
+                onChange={e => {
+                  const val = Number(e.target.value);
+                  setTotalAmount(Number.isFinite(val) ? Math.max(0, val) : 0);
+                }}
                 className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-paila-blue/20 focus:border-paila-blue outline-none"
               />
             </div>
@@ -362,8 +368,11 @@ export default function NewBooking({ onNavigate }: NewBookingProps) {
               <label className="block text-sm font-medium text-slate-700 mb-1.5">Advance Received (NPR)</label>
               <input
                 type="number"
-                value={advanceAmount}
-                onChange={e => setAdvanceAmount(Number(e.target.value))}
+                value={Number.isFinite(advanceAmount) ? advanceAmount : 0}
+                onChange={e => {
+                  const val = Number(e.target.value);
+                  setAdvanceAmount(Number.isFinite(val) ? Math.max(0, val) : 0);
+                }}
                 className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-paila-blue/20 focus:border-paila-blue outline-none"
               />
             </div>
@@ -531,7 +540,7 @@ export default function NewBooking({ onNavigate }: NewBookingProps) {
                 <div className="bg-slate-50 rounded-lg p-4 space-y-2">
                   <p className="text-sm"><span className="text-slate-500">Package:</span> <span className="font-medium">{selectedPackage ? packages.find(p => p.id === selectedPackage)?.title : 'Custom'}</span></p>
                   <p className="text-sm"><span className="text-slate-500">Dates:</span> <span className="font-medium">{startDate || 'TBD'} → {endDate || 'TBD'}</span></p>
-                  <p className="text-sm"><span className="text-slate-500">Pax:</span> <span className="font-medium">{paxCount}</span></p>
+                  <p className="text-sm"><span className="text-slate-500">Pax:</span> <span className="font-medium">{Number.isFinite(Number(paxCount)) ? paxCount : 1}</span></p>
                 </div>
               </div>
             </div>
@@ -539,9 +548,9 @@ export default function NewBooking({ onNavigate }: NewBookingProps) {
               <div>
                 <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Financials</h3>
                 <div className="bg-slate-50 rounded-lg p-4 space-y-2">
-                  <p className="text-sm"><span className="text-slate-500">Total Amount:</span> <span className="font-bold text-paila-blue">NPR {totalAmount.toLocaleString()}</span></p>
-                  <p className="text-sm"><span className="text-slate-500">Advance:</span> <span className="font-medium text-green-700">NPR {advanceAmount.toLocaleString()}</span></p>
-                  <p className="text-sm"><span className="text-slate-500">Balance Due:</span> <span className="font-medium text-red-600">NPR {(totalAmount - advanceAmount).toLocaleString()}</span></p>
+                  <p className="text-sm"><span className="text-slate-500">Total Amount:</span> <span className="font-bold text-paila-blue">NPR {(Number.isFinite(totalAmount) ? totalAmount : 0).toLocaleString()}</span></p>
+                  <p className="text-sm"><span className="text-slate-500">Advance:</span> <span className="font-medium text-green-700">NPR {(Number.isFinite(advanceAmount) ? advanceAmount : 0).toLocaleString()}</span></p>
+                  <p className="text-sm"><span className="text-slate-500">Balance Due:</span> <span className="font-medium text-red-600">NPR {Math.max(0, (Number(totalAmount) || 0) - (Number(advanceAmount) || 0)).toLocaleString()}</span></p>
                 </div>
               </div>
               <div>

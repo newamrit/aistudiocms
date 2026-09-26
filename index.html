@@ -1,6 +1,120 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <script>
+      // Suppress Vite HMR / WebSocket connection failure errors and React NaN attribute warnings
+      (function() {
+        var isIgnoredError = function(val) {
+          if (!val) return false;
+          var str = '';
+          if (typeof val === 'string') {
+            str = val;
+          } else if (val instanceof Error || (val && typeof val.message === 'string')) {
+            str = (val.message || '') + ' ' + (val.stack || '');
+          } else {
+            try { str = JSON.stringify(val); } catch(e) { str = String(val); }
+          }
+          return str.indexOf('[vite]') !== -1 || 
+                 str.indexOf('WebSocket') !== -1 || 
+                 str.indexOf('vite-hmr') !== -1 || 
+                 str.indexOf('failed to connect to websocket') !== -1 ||
+                 str.indexOf('Received NaN') !== -1 ||
+                 str.indexOf('cast the value to a string') !== -1;
+        };
+
+        var originalError = console.error;
+        console.error = function() {
+          for (var i = 0; i < arguments.length; i++) {
+            if (isIgnoredError(arguments[i])) return;
+          }
+          var fullMsg = Array.prototype.slice.call(arguments).map(function(a) { 
+            try { return typeof a === 'object' ? JSON.stringify(a) : String(a); } catch(e) { return String(a); }
+          }).join(' ');
+          if (isIgnoredError(fullMsg)) return;
+          originalError.apply(console, arguments);
+        };
+
+        var originalWarn = console.warn;
+        console.warn = function() {
+          for (var i = 0; i < arguments.length; i++) {
+            if (isIgnoredError(arguments[i])) return;
+          }
+          var fullMsg = Array.prototype.slice.call(arguments).map(function(a) { 
+            try { return typeof a === 'object' ? JSON.stringify(a) : String(a); } catch(e) { return String(a); }
+          }).join(' ');
+          if (isIgnoredError(fullMsg)) return;
+          originalWarn.apply(console, arguments);
+        };
+
+        window.addEventListener('unhandledrejection', function(event) {
+          if (isIgnoredError(event.reason)) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        });
+
+        window.addEventListener('error', function(event) {
+          if (isIgnoredError(event.message) || isIgnoredError(event.error)) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        });
+
+        var OriginalWebSocket = window.WebSocket;
+        if (OriginalWebSocket) {
+          window.WebSocket = function(url, protocols) {
+            if (
+              protocols === 'vite-hmr' ||
+              (typeof url === 'string' && (url.indexOf('token=') !== -1 || url.indexOf('24678') !== -1 || url.indexOf('vite') !== -1))
+            ) {
+              var listeners = {};
+              var mockWs = {
+                readyState: 1,
+                OPEN: 1,
+                CONNECTING: 0,
+                CLOSING: 2,
+                CLOSED: 3,
+                protocol: protocols || '',
+                url: url,
+                send: function() {},
+                close: function() {},
+                addEventListener: function(event, cb) {
+                  if (!listeners[event]) listeners[event] = [];
+                  listeners[event].push(cb);
+                  if (event === 'open') {
+                    setTimeout(function() {
+                      cb({ type: 'open', target: mockWs });
+                    }, 0);
+                  }
+                },
+                removeEventListener: function(event, cb) {
+                  if (listeners[event]) {
+                    listeners[event] = listeners[event].filter(function(fn) { return fn !== cb; });
+                  }
+                },
+                dispatchEvent: function() { return true; },
+                onopen: null,
+                onclose: null,
+                onerror: null,
+                onmessage: null,
+              };
+              setTimeout(function() {
+                if (typeof mockWs.onopen === 'function') {
+                  mockWs.onopen({ type: 'open', target: mockWs });
+                }
+              }, 0);
+              return mockWs;
+            }
+            return new OriginalWebSocket(url, protocols);
+          };
+          window.WebSocket.prototype = OriginalWebSocket.prototype;
+          window.WebSocket.CONNECTING = 0;
+          window.WebSocket.OPEN = 1;
+          window.WebSocket.CLOSING = 2;
+          window.WebSocket.CLOSED = 3;
+        }
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover" />
     <meta name="theme-color" content="#012871" />

@@ -246,10 +246,10 @@ export default function Bookings({ onNavigate }: BookingsProps) {
       hour12: true,
     });
 
-    const totalAgreed = bookingsToExport.reduce((s, b) => s + b.totalAgreedAmount, 0);
-    const totalAdvance = bookingsToExport.reduce((s, b) => s + b.advanceReceived, 0);
-    const totalBalance = totalAgreed - totalAdvance;
-    const totalPax = bookingsToExport.reduce((s, b) => s + b.paxCount, 0);
+    const totalAgreed = bookingsToExport.reduce((s, b) => s + (Number.isFinite(Number(b.totalAgreedAmount)) ? Number(b.totalAgreedAmount) : 0), 0);
+    const totalAdvance = bookingsToExport.reduce((s, b) => s + (Number.isFinite(Number(b.advanceReceived)) ? Number(b.advanceReceived) : 0), 0);
+    const totalBalance = Math.max(0, totalAgreed - totalAdvance);
+    const totalPax = bookingsToExport.reduce((s, b) => s + (Number.isFinite(Number(b.paxCount)) ? Number(b.paxCount) : 0), 0);
 
     const rows = [
       ['PAILA NEPAL TOURS & TRAVELS PVT. LTD. - BOOKINGS AUDIT REPORT'],
@@ -285,7 +285,11 @@ export default function Bookings({ onNavigate }: BookingsProps) {
       try {
         const start = new Date(b.startDate).getTime();
         const end = new Date(b.endDate).getTime();
-        durationDays = Math.max(1, Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1);
+        if (Number.isFinite(start) && Number.isFinite(end) && end >= start) {
+          durationDays = Math.max(1, Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1);
+        } else {
+          durationDays = 1;
+        }
       } catch {
         durationDays = 1;
       }
@@ -369,6 +373,7 @@ export default function Bookings({ onNavigate }: BookingsProps) {
   };
 
   const handleSelectChartMonth = (yearMonth: string) => {
+    if (!yearMonth || typeof yearMonth !== 'string' || !yearMonth.includes('-')) return;
     const [y, m] = yearMonth.split('-');
     const year = parseInt(y);
     const month = parseInt(m);
@@ -425,9 +430,11 @@ export default function Bookings({ onNavigate }: BookingsProps) {
   };
 
   // Helper to highlight matching text
-  const highlightMatch = (text: string, query: string) => {
-    if (!query.trim()) return text;
-    const parts = text.split(new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'));
+  const highlightMatch = (text: string | null | undefined, query: string) => {
+    if (!text) return text || '';
+    if (!query || !query.trim()) return text;
+    const str = String(text);
+    const parts = str.split(new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'));
     return (
       <span>
         {parts.map((part, i) => 
@@ -443,6 +450,55 @@ export default function Bookings({ onNavigate }: BookingsProps) {
     );
   };
 
+  const getStatusBadgeData = (booking: Booking) => {
+    const status = booking.status;
+    const today = new Date().toISOString().split('T')[0];
+    
+    if (status === 'IN_PROGRESS') {
+      return {
+        label: 'In-Progress',
+        color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+        dotClass: 'bg-emerald-500 animate-pulse ring-2 ring-emerald-500/30',
+        icon: <TrendingUp size={11} className="shrink-0" />
+      };
+    }
+    
+    if (status === 'COMPLETED') {
+      return {
+        label: 'Completed',
+        color: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700',
+        dotClass: 'bg-slate-400',
+        icon: <Check size={11} className="shrink-0" />
+      };
+    }
+
+    if (status === 'CONFIRMED') {
+      const isUpcoming = booking.startDate > today;
+      return {
+        label: isUpcoming ? 'Upcoming' : 'Confirmed',
+        color: 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border-blue-200 dark:border-blue-800',
+        dotClass: 'bg-blue-500',
+        icon: isUpcoming ? <Clock size={11} className="shrink-0" /> : <Check size={11} className="shrink-0" />
+      };
+    }
+
+    if (status === 'PROPOSED') {
+      return {
+        label: 'Proposed',
+        color: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200 dark:border-amber-800',
+        dotClass: 'bg-amber-500',
+        icon: <Tag size={11} className="shrink-0" />
+      };
+    }
+
+    return {
+      label: 'Cancelled',
+      color: 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border-rose-200 dark:border-rose-800',
+      dotClass: 'bg-rose-500',
+      icon: <X size={11} className="shrink-0" />
+    };
+  };
+
   const hasActiveFilters = Boolean(
     search.trim() || 
     statusFilter !== 'ALL' || 
@@ -453,8 +509,8 @@ export default function Bookings({ onNavigate }: BookingsProps) {
   );
 
   const selectedBookingsList = bookingsList.filter(b => selectedIds.includes(b.id));
-  const totalRevenue = filtered.reduce((s, b) => s + b.totalAgreedAmount, 0);
-  const totalPax = filtered.reduce((s, b) => s + b.paxCount, 0);
+  const totalRevenue = filtered.reduce((s, b) => s + (Number.isFinite(Number(b.totalAgreedAmount)) ? Number(b.totalAgreedAmount) : 0), 0);
+  const totalPax = filtered.reduce((s, b) => s + (Number.isFinite(Number(b.paxCount)) ? Number(b.paxCount) : 0), 0);
 
   return (
     <div className="p-4 md:p-6 space-y-5 animate-fade-in relative">
@@ -1098,31 +1154,32 @@ export default function Bookings({ onNavigate }: BookingsProps) {
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-1 text-sm font-bold text-slate-700 dark:text-slate-300">
                         <Users size={14} className="text-slate-400" />
-                        {booking.paxCount}
+                        {Number.isFinite(Number(booking.paxCount)) ? booking.paxCount : 1}
                       </div>
                     </td>
 
                     {/* Amounts */}
                     <td className="px-4 py-3.5">
                       <p className="text-sm font-bold text-slate-900 dark:text-white tabular-nums">
-                        NPR {booking.totalAgreedAmount.toLocaleString()}
+                        NPR {(Number.isFinite(Number(booking.totalAgreedAmount)) ? Number(booking.totalAgreedAmount) : 0).toLocaleString()}
                       </p>
                       <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
-                        Adv: NPR {booking.advanceReceived.toLocaleString()}
+                        Adv: NPR {(Number.isFinite(Number(booking.advanceReceived)) ? Number(booking.advanceReceived) : 0).toLocaleString()}
                       </p>
                     </td>
 
                     {/* Status Badge */}
                     <td className="px-4 py-3.5">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold rounded-full border shadow-2xs ${getStatusColor(booking.status)}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${
-                          booking.status === 'PROPOSED' ? 'bg-amber-500' :
-                          booking.status === 'CONFIRMED' ? 'bg-blue-500' :
-                          booking.status === 'IN_PROGRESS' ? 'bg-emerald-500' :
-                          booking.status === 'COMPLETED' ? 'bg-slate-400' : 'bg-rose-500'
-                        }`} />
-                        {booking.status.replace('_', ' ')}
-                      </span>
+                      {(() => {
+                        const badge = getStatusBadgeData(booking);
+                        return (
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold rounded-full border shadow-2xs ${badge.color}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${badge.dotClass}`} />
+                            {badge.icon}
+                            <span>{badge.label}</span>
+                          </span>
+                        );
+                      })()}
                     </td>
 
                     {/* Actions */}
@@ -1191,7 +1248,7 @@ export default function Bookings({ onNavigate }: BookingsProps) {
         <div className="flex items-center gap-4 flex-wrap">
           <span className="flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300">
             <Users size={13} className="text-slate-400" />
-            <span>Total Pax: <strong className="font-bold">{totalPax}</strong></span>
+            <span>Total Pax: <strong className="font-bold">{Number.isFinite(totalPax) ? totalPax : 0}</strong></span>
           </span>
           <span className="flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300">
             <DollarSign size={13} className="text-emerald-500" />

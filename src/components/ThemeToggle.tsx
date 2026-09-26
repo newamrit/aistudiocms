@@ -41,7 +41,7 @@ export default function ThemeToggle({
 
   if (variant === 'pill') {
     return (
-      <div className={`inline-flex items-center p-1 bg-slate-200/80 dark:bg-slate-800/80 rounded-xl border border-slate-300/60 dark:border-slate-700/60 backdrop-blur-xs transition-colors ${className}`}>
+      <div className={`inline-flex items-center p-1 bg-slate-200/80 dark:bg-slate-800/80 rounded-xl border border-slate-300/60 dark:border-slate-700/60 backdrop-blur-xs transition-colors scale-90 sm:scale-100 origin-right ${className}`}>
         <button
           type="button"
           onClick={() => handleSelect('light')}
@@ -91,12 +91,13 @@ export default function ThemeToggle({
         <button
           type="button"
           onClick={() => setDropdownOpen(!dropdownOpen)}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all scale-90 sm:scale-100 origin-right ${
             isDark
               ? 'bg-slate-800/80 border-slate-700 text-slate-200 hover:bg-slate-700'
               : 'bg-white/80 border-slate-200 text-slate-700 hover:bg-slate-50'
           } ${className}`}
           title="Change color theme"
+          aria-label="Change color theme"
         >
           {theme === 'system' ? (
             <Laptop size={14} className="text-slate-400" />
@@ -155,7 +156,7 @@ export default function ThemeToggle({
     <button
       type="button"
       onClick={handleToggle}
-      className={`relative p-2 rounded-xl border transition-all active:scale-95 cursor-pointer flex items-center justify-center ${
+      className={`relative p-2 rounded-xl border transition-all active:scale-95 cursor-pointer flex items-center justify-center scale-90 sm:scale-100 origin-right ${
         isDark
           ? 'bg-slate-800/80 border-slate-700 text-blue-400 hover:bg-slate-700 hover:text-blue-300 shadow-sm'
           : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-amber-600 shadow-xs'

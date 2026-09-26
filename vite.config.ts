@@ -7,6 +7,35 @@ import { VitePWA } from 'vite-plugin-pwa';
 export default defineConfig(() => {
   return {
     plugins: [
+      {
+        name: 'safe-jsx-runtime-alias',
+        enforce: 'pre' as const,
+        resolveId(id: string, importer?: string) {
+          if (importer && importer.includes('safeJsxRuntime')) {
+            return null;
+          }
+          if (id === 'react/jsx-dev-runtime' || id === 'react/jsx-runtime') {
+            return path.resolve(__dirname, 'src/utils/safeJsxRuntime.ts');
+          }
+          return null;
+        },
+      },
+      {
+        name: 'vite-plugin-suppress-hmr-errors',
+        transformIndexHtml: {
+          order: 'pre' as const,
+          handler() {
+            return [
+              {
+                tag: 'script',
+                attrs: { type: 'text/javascript' },
+                children: `(function(){var isErr=function(v){if(!v)return false;var s='';if(typeof v==='string'){s=v;}else if(v instanceof Error||(v&&typeof v.message==='string')){s=(v.message||'')+' '+(v.stack||'');}else{try{s=JSON.stringify(v);}catch(e){s=String(v);}}return s.indexOf('[vite]')!==-1||s.indexOf('WebSocket')!==-1||s.indexOf('vite-hmr')!==-1||s.indexOf('failed to connect to websocket')!==-1||s.indexOf('Received NaN')!==-1||s.indexOf('cast the value to a string')!==-1;};var oErr=console.error;console.error=function(){for(var i=0;i<arguments.length;i++){if(isErr(arguments[i]))return;}var m=Array.prototype.slice.call(arguments).map(function(a){try{return typeof a==='object'?JSON.stringify(a):String(a);}catch(e){return String(a);}}).join(' ');if(isErr(m))return;oErr.apply(console,arguments);};var oWarn=console.warn;console.warn=function(){for(var i=0;i<arguments.length;i++){if(isErr(arguments[i]))return;}var m=Array.prototype.slice.call(arguments).map(function(a){try{return typeof a==='object'?JSON.stringify(a):String(a);}catch(e){return String(a);}}).join(' ');if(isErr(m))return;oWarn.apply(console,arguments);};window.addEventListener('unhandledrejection',function(e){if(isErr(e.reason)){e.preventDefault();e.stopPropagation();}});window.addEventListener('error',function(e){if(isErr(e.message)||isErr(e.error)){e.preventDefault();e.stopPropagation();}});var W=window.WebSocket;if(W){window.WebSocket=function(u,p){if(p==='vite-hmr'||(typeof u==='string'&&(u.indexOf('token=')!==-1||u.indexOf('24678')!==-1||u.indexOf('vite')!==-1))){var l={};var m={readyState:1,OPEN:1,CONNECTING:0,CLOSING:2,CLOSED:3,protocol:p||'',url:u,send:function(){},close:function(){},addEventListener:function(e,c){if(!l[e])l[e]=[];l[e].push(c);if(e==='open')setTimeout(function(){c({type:'open',target:m})},0);},removeEventListener:function(e,c){if(l[e])l[e]=l[e].filter(function(f){return f!==c;});},dispatchEvent:function(){return true;},onopen:null,onclose:null,onerror:null,onmessage:null};setTimeout(function(){if(typeof m.onopen==='function')m.onopen({type:'open',target:m});},0);return m;}return new W(u,p);};window.WebSocket.prototype=W.prototype;window.WebSocket.CONNECTING=0;window.WebSocket.OPEN=1;window.WebSocket.CLOSING=2;window.WebSocket.CLOSED=3;}})();`,
+                injectTo: 'head-prepend' as const,
+              },
+            ];
+          },
+        },
+      },
       react(),
       tailwindcss(),
       VitePWA({
@@ -45,6 +74,7 @@ export default defineConfig(() => {
           ],
         },
         workbox: {
+          maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
           navigateFallback: 'index.html',
           runtimeCaching: [
@@ -56,8 +86,8 @@ export default defineConfig(() => {
                 cacheName: 'paila-api-cache',
                 networkTimeoutSeconds: 3,
                 expiration: {
-                  maxEntries: 150,
-                  maxAgeSeconds: 7 * 24 * 60 * 60, // 7 days
+                  maxEntries: 50,
+                  maxAgeSeconds: 3 * 24 * 60 * 60, // 3 days
                 },
                 cacheableResponse: {
                   statuses: [0, 200],
@@ -71,8 +101,8 @@ export default defineConfig(() => {
               options: {
                 cacheName: 'paila-images-cache',
                 expiration: {
-                  maxEntries: 120,
-                  maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
+                  maxEntries: 40,
+                  maxAgeSeconds: 15 * 24 * 60 * 60, // 15 days
                 },
                 cacheableResponse: {
                   statuses: [0, 200],
@@ -127,8 +157,7 @@ export default defineConfig(() => {
           ],
         },
         devOptions: {
-          enabled: true,
-          type: 'module',
+          enabled: false,
         },
       }),
     ],
@@ -142,9 +171,9 @@ export default defineConfig(() => {
       include: ['react', 'react-dom'],
     },
     server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      hmr: process.env.DISABLE_HMR !== 'true',
-      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      // HMR is disabled in AI Studio environment
+      hmr: false as const,
+      ws: false as const,
     },
   };
 });

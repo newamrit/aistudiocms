@@ -117,156 +117,70 @@ export function initializeProductionDatabase(forceReset: boolean = false): void 
     // 5. Bookings
     const initialBookings: Booking[] = [
       {
-        id: 1, bookingCode: 'PNH-2026-001', clientType: 'INSTITUTIONAL',
-        clientName: 'St. Xavier\'s College', clientEmail: 'admin@stxaviers.edu.np', clientPhone: '+977-1-4234567',
-        packageId: 2, packageName: 'Pokhara Student Excursion', status: 'CONFIRMED',
-        startDate: '2026-02-15', endDate: '2026-02-18', paxCount: 45,
-        totalAgreedAmount: 382500, advanceReceived: 150000,
-        assignedTourOperatorId: null,
-        notes: 'College educational tour. Need vegetarian meal options for 10 students.',
-        createdBy: 2, createdByName: 'Sita Maharjan', createdAt: '2026-01-10',
-        statusHistory: [
-          {
-            id: 'sh-1-1',
-            bookingId: 1,
-            bookingCode: 'PNH-2026-001',
-            fromStatus: null,
-            toStatus: 'PROPOSED',
-            changedAt: '2026-01-10T09:30:00.000Z',
-            changedBy: { id: 2, name: 'Sita Maharjan', role: 'SALES', email: 'sales@pailanepal.com' },
-            reason: 'Quotation and package proposal drafted for St. Xavier\'s College.',
-            notes: 'Requested 45 student slots for Pokhara Excursion.',
-            source: 'ADMIN_PORTAL'
-          },
-          {
-            id: 'sh-1-2',
-            bookingId: 1,
-            bookingCode: 'PNH-2026-001',
-            fromStatus: 'PROPOSED',
-            toStatus: 'CONFIRMED',
-            changedAt: '2026-01-15T14:20:00.000Z',
-            changedBy: { id: 1, name: 'Rajesh Shrestha', role: 'SUPER_ADMIN', email: 'admin@pailanepal.com' },
-            reason: 'Advance payment of NPR 150,000 received via Nabil Bank. Bus allocated.',
-            source: 'ADMIN_PORTAL'
-          }
-        ],
-        itineraryDays: [
-          { id: 1, dayNumber: 1, title: 'Drive to Pokhara & Lakeside', description: 'Scenic drive to Pokhara via Prithvi Highway. Hotel check-in.', overnightLocation: 'Hotel Lake Star, Pokhara', mealsIncluded: 'L, D' },
-          { id: 2, dayNumber: 2, title: 'Sarangkot Sunrise & Sightseeing', description: 'Early morning sunrise view from Sarangkot. Sightseeing of Davis Falls, Gupteshwor Cave.', overnightLocation: 'Hotel Lake Star, Pokhara', mealsIncluded: 'B, L, D' },
-          { id: 3, dayNumber: 3, title: 'Phewa Lake Boating & Peace Pagoda', description: 'Boat ride on Phewa Lake, hike to World Peace Pagoda.', overnightLocation: 'Hotel Lake Star, Pokhara', mealsIncluded: 'B, L, D' },
-          { id: 4, dayNumber: 4, title: 'Return to Kathmandu', description: 'Drive back to Kathmandu after breakfast.', overnightLocation: '', mealsIncluded: 'B, L' },
-        ]
-      },
-      {
-        id: 2, bookingCode: 'PNH-2026-002', clientType: 'FOREIGN_TREK',
-        clientName: 'David Miller Group', clientEmail: 'david.miller@gmail.com', clientPhone: '+1-555-0199',
-        packageId: 1, packageName: 'Annapurna Base Camp Trek', status: 'IN_PROGRESS',
-        startDate: '2026-01-20', endDate: '2026-01-29', paxCount: 4,
-        totalAgreedAmount: 180000, advanceReceived: 180000,
+        id: 1, bookingCode: 'PNH-2026-020', clientType: 'INSTITUTIONAL',
+        clientName: 'St. Mary\'s School', clientEmail: 'info@stmarys.edu.np', clientPhone: '+977-1-4410000',
+        packageId: 2, packageName: 'Pokhara Student Excursion', status: 'COMPLETED',
+        startDate: '2026-09-20', endDate: '2026-09-23', paxCount: 30,
+        totalAgreedAmount: 255000, advanceReceived: 255000,
         assignedTourOperatorId: 4, assignedTourOperatorName: 'Prakash Gurung',
-        notes: '4 Australian trekkers. Requires porter service and gear check in Pokhara.',
-        createdBy: 2, createdByName: 'Sita Maharjan', createdAt: '2026-01-12',
+        notes: 'School group tour completed successfully.',
+        createdBy: 2, createdByName: 'Sita Maharjan', createdAt: '2026-09-01',
         statusHistory: [
-          {
-            id: 'sh-2-1',
-            bookingId: 2,
-            bookingCode: 'PNH-2026-002',
-            fromStatus: null,
-            toStatus: 'CONFIRMED',
-            changedAt: '2026-01-16T10:00:00.000Z',
-            changedBy: { id: 1, name: 'Rajesh Shrestha', role: 'SUPER_ADMIN', email: 'admin@pailanepal.com' },
-            reason: 'Full advance wire transfer confirmed. ACAP permits issued.',
-            source: 'ADMIN_PORTAL'
-          },
-          {
-            id: 'sh-2-2',
-            bookingId: 2,
-            bookingCode: 'PNH-2026-002',
-            fromStatus: 'CONFIRMED',
-            toStatus: 'IN_PROGRESS',
-            changedAt: '2026-01-20T06:30:00.000Z',
-            changedBy: { id: 4, name: 'Prakash Gurung', role: 'TOUR_OPERATOR', email: 'tour@pailanepal.com' },
-            reason: 'Tour group departed Kathmandu via Himalayan Jeep Service to Nayapul trailhead.',
-            notes: 'Lead guide Prakash Gurung on duty with 4 foreign trekkers.',
-            source: 'FIELD_APP'
-          }
+          { id: 'sh-1-1', bookingId: 1, bookingCode: 'PNH-2026-020', fromStatus: 'IN_PROGRESS', toStatus: 'COMPLETED', changedAt: '2026-09-23T18:00:00.000Z', changedBy: { id: 1, name: 'Rajesh Shrestha', role: 'SUPER_ADMIN', email: 'admin@pailanepal.com' }, reason: 'Tour concluded.', source: 'ADMIN_PORTAL' }
         ],
-        itineraryDays: [
-          { id: 5, dayNumber: 1, title: 'Drive to Nayapul & Trek to Tikhedhunga', description: 'Early drive to Nayapul. Start trek through sub-tropical forest.', overnightLocation: 'Tikhedhunga Teahouse', mealsIncluded: 'B, L, D' },
-          { id: 6, dayNumber: 2, title: 'Trek to Ghorepani via Ulleri', description: 'Steep climb up Ulleri stone steps. Reach Ghorepani through rhododendron forest.', overnightLocation: 'Ghorepani Teahouse', mealsIncluded: 'B, L, D' },
-          { id: 7, dayNumber: 3, title: 'Poon Hill Sunrise & Trek to Tadapani', description: 'Pre-dawn hike to Poon Hill (3,210m) for panoramic sunrise. Return to Ghorepani for breakfast.', overnightLocation: 'Tadapani Teahouse', mealsIncluded: 'B, L, D' },
-        ]
+        itineraryDays: []
       },
       {
-        id: 3, bookingCode: 'PNH-2026-003', clientType: 'CORPORATE',
-        clientName: 'Nabil Bank Ltd.', clientEmail: 'hr@nabilbank.com', clientPhone: '+977-1-4567890',
-        packageId: 4, packageName: 'Chitwan Jungle Safari', status: 'PROPOSED',
-        startDate: '2026-03-05', endDate: '2026-03-07', paxCount: 25,
-        totalAgreedAmount: 300000, advanceReceived: 0,
-        assignedTourOperatorId: null,
-        notes: 'Corporate team building event. Need conference room for 1 evening session.',
-        createdBy: 5, createdByName: 'Anita Rai', createdAt: '2026-01-20',
-        statusHistory: [
-          {
-            id: 'sh-3-1',
-            bookingId: 3,
-            bookingCode: 'PNH-2026-003',
-            fromStatus: null,
-            toStatus: 'PROPOSED',
-            changedAt: '2026-01-20T10:15:00.000Z',
-            changedBy: { id: 5, name: 'Anita Rai', role: 'SALES', email: 'anita@pailanepal.com' },
-            reason: 'Corporate proposal submitted to HR Department of Nabil Bank Ltd.',
-            notes: 'Awaiting board approval for budget release of NPR 300,000.',
-            source: 'ADMIN_PORTAL'
-          }
-        ],
-        itineraryDays: [
-          { id: 8, dayNumber: 1, title: 'Drive to Chitwan', description: 'Morning departure by AC bus. Arrive Sauraha by afternoon. Check-in resort. Welcome drink & briefing.', overnightLocation: 'Green Park Resort, Sauraha', mealsIncluded: 'L, D' },
-          { id: 9, dayNumber: 2, title: 'Full Day Jungle Activities', description: 'Morning elephant ride. Canoe ride on Rapti River. Afternoon jungle walk. Evening Tharu cultural dance.', overnightLocation: 'Green Park Resort, Sauraha', mealsIncluded: 'B, L, D' },
-          { id: 10, dayNumber: 3, title: 'Bird Watching & Return', description: 'Early morning bird watching. Breakfast. Drive back to Kathmandu.', overnightLocation: '', mealsIncluded: 'B, L' },
-        ]
-      },
-      {
-        id: 4, bookingCode: 'PNH-2026-004', clientType: 'INSTITUTIONAL',
-        clientName: 'Budhanilkantha School', clientEmail: 'info@budhanilkanthaschool.edu.np', clientPhone: '+977-1-4371234',
+        id: 2, bookingCode: 'PNH-2026-021', clientType: 'INDIVIDUAL',
+        clientName: 'Kathmandu Local Hikers', clientEmail: 'kathmandu.hikers@gmail.com', clientPhone: '+977-9800000000',
         packageId: 6, packageName: 'Kathmandu Heritage Tour', status: 'COMPLETED',
-        startDate: '2026-01-05', endDate: '2026-01-06', paxCount: 60,
-        totalAgreedAmount: 300000, advanceReceived: 300000,
-        assignedTourOperatorId: null,
-        notes: 'School heritage tour completed successfully.',
-        createdBy: 2, createdByName: 'Sita Maharjan', createdAt: '2025-12-20',
+        startDate: '2026-09-24', endDate: '2026-09-25', paxCount: 10,
+        totalAgreedAmount: 50000, advanceReceived: 50000,
+        assignedTourOperatorId: 4, assignedTourOperatorName: 'Prakash Gurung',
+        notes: 'Short heritage tour for local group.',
+        createdBy: 2, createdByName: 'Sita Maharjan', createdAt: '2026-09-22',
         statusHistory: [
-          {
-            id: 'sh-4-1',
-            bookingId: 4,
-            bookingCode: 'PNH-2026-004',
-            fromStatus: 'IN_PROGRESS',
-            toStatus: 'COMPLETED',
-            changedAt: '2026-01-06T18:00:00.000Z',
-            changedBy: { id: 1, name: 'Rajesh Shrestha', role: 'SUPER_ADMIN', email: 'admin@pailanepal.com' },
-            reason: 'Tour concluded with all students safely returned. Vendor accounts fully settled.',
-            source: 'ADMIN_PORTAL'
-          }
+          { id: 'sh-2-1', bookingId: 2, bookingCode: 'PNH-2026-021', fromStatus: 'IN_PROGRESS', toStatus: 'COMPLETED', changedAt: '2026-09-25T17:00:00.000Z', changedBy: { id: 1, name: 'Rajesh Shrestha', role: 'SUPER_ADMIN', email: 'admin@pailanepal.com' }, reason: 'Tour finished.', source: 'ADMIN_PORTAL' }
         ],
-        itineraryDays: [
-          { id: 11, dayNumber: 1, title: 'Heritage Sites Day 1', description: 'Visit Pashupatinath, Boudhanath, and Swayambhunath.', overnightLocation: 'N/A (Day return)', mealsIncluded: 'L' },
-          { id: 12, dayNumber: 2, title: 'Heritage Sites Day 2', description: 'Visit Patan Durbar Square and Bhaktapur Durbar Square.', overnightLocation: '', mealsIncluded: 'L' },
-        ]
+        itineraryDays: []
       },
       {
-        id: 5, bookingCode: 'PNH-2026-005', clientType: 'INDIVIDUAL',
-        clientName: 'Ramesh & Family', clientEmail: 'ramesh.sharma@gmail.com', clientPhone: '+977-9801234567',
-        packageId: 5, packageName: 'Langtang Valley Trek', status: 'CONFIRMED',
-        startDate: '2026-02-20', endDate: '2026-02-26', paxCount: 6,
-        totalAgreedAmount: 195000, advanceReceived: 80000,
+        id: 3, bookingCode: 'PNH-2026-022', clientType: 'FOREIGN_TREK',
+        clientName: 'John Doe (USA)', clientEmail: 'john.doe@example.com', clientPhone: '+1-555-0101',
+        packageId: 1, packageName: 'Annapurna Base Camp Trek', status: 'IN_PROGRESS',
+        startDate: '2026-09-25', endDate: '2026-10-04', paxCount: 2,
+        totalAgreedAmount: 90000, advanceReceived: 90000,
+        assignedTourOperatorId: 4, assignedTourOperatorName: 'Prakash Gurung',
+        notes: 'Starting trek today. Group healthy and excited.',
+        createdBy: 2, createdByName: 'Sita Maharjan', createdAt: '2026-08-20',
+        statusHistory: [
+          { id: 'sh-3-1', bookingId: 3, bookingCode: 'PNH-2026-022', fromStatus: 'CONFIRMED', toStatus: 'IN_PROGRESS', changedAt: '2026-09-25T08:00:00.000Z', changedBy: { id: 4, name: 'Prakash Gurung', role: 'TOUR_OPERATOR', email: 'tour@pailanepal.com' }, reason: 'Group started trek.', source: 'FIELD_APP' }
+        ],
+        itineraryDays: []
+      },
+      {
+        id: 4, bookingCode: 'PNH-2026-023', clientType: 'FOREIGN_TREK',
+        clientName: 'Jane Smith (UK)', clientEmail: 'jane.smith@example.co.uk', clientPhone: '+44-7700-900000',
+        packageId: 3, packageName: 'Everest View Trek', status: 'CONFIRMED',
+        startDate: '2026-10-10', endDate: '2026-10-17', paxCount: 1,
+        totalAgreedAmount: 65000, advanceReceived: 30000,
         assignedTourOperatorId: null,
-        notes: 'Family group with 2 children (ages 12 and 14). Moderate pace required.',
-        createdBy: 5, createdByName: 'Anita Rai', createdAt: '2026-01-15',
+        notes: 'Solo female traveler. Gear rental assistance needed.',
+        createdBy: 5, createdByName: 'Anita Rai', createdAt: '2026-09-10',
         statusHistory: [],
-        itineraryDays: [
-          { id: 13, dayNumber: 1, title: 'Drive to Syabrubesi', description: 'Scenic drive from Kathmandu to Syabrubesi (1,460m).', overnightLocation: 'Syabrubesi Lodge', mealsIncluded: 'L, D' },
-          { id: 14, dayNumber: 2, title: 'Trek to Lama Hotel', description: 'Trek through bamboo forest along Langtang river.', overnightLocation: 'Lama Hotel', mealsIncluded: 'B, L, D' },
-        ]
+        itineraryDays: []
+      },
+      {
+        id: 5, bookingCode: 'PNH-2026-024', clientType: 'CORPORATE',
+        clientName: 'Google Nepal Team', clientEmail: 'events-np@google.com', clientPhone: '+977-1-5500000',
+        packageId: 4, packageName: 'Chitwan Jungle Safari', status: 'PROPOSED',
+        startDate: '2026-11-05', endDate: '2026-11-07', paxCount: 15,
+        totalAgreedAmount: 180000, advanceReceived: 0,
+        assignedTourOperatorId: null,
+        notes: 'Corporate retreat. Specific request for high-speed WiFi at resort.',
+        createdBy: 2, createdByName: 'Sita Maharjan', createdAt: '2026-09-20',
+        statusHistory: [],
+        itineraryDays: []
       }
     ];
     if (forceReset || !localStorage.getItem(DB_KEYS.BOOKINGS)) {
@@ -275,14 +189,9 @@ export function initializeProductionDatabase(forceReset: boolean = false): void 
 
     // 6. Operation Allocations
     const initialAllocations: OperationAllocation[] = [
-      { id: 1, bookingId: 1, bookingCode: 'PNH-2026-001', vendorId: 1, vendorName: 'Hotel Lake Star', serviceType: 'HOTEL', serviceDate: '2026-02-15', agreedCost: 135000, amountPaid: 50000, paymentStatus: 'PARTIALLY_PAID', fieldUpdatedByOperator: false, specialNotes: '15 rooms (triple sharing) for 3 nights' },
-      { id: 2, bookingId: 1, bookingCode: 'PNH-2026-001', vendorId: 6, vendorName: 'Sajha Yatayat Bus', serviceType: 'VEHICLE', serviceDate: '2026-02-15', agreedCost: 35000, amountPaid: 35000, paymentStatus: 'SETTLED', fieldUpdatedByOperator: false, specialNotes: '45-seater AC bus, round trip' },
-      { id: 3, bookingId: 1, bookingCode: 'PNH-2026-001', vendorId: 4, vendorName: 'Highway Dhaba', serviceType: 'RESTAURANT', serviceDate: '2026-02-15', agreedCost: 22500, amountPaid: 0, paymentStatus: 'PENDING', fieldUpdatedByOperator: false, specialNotes: 'Lunch for 45 pax x 2 days (to & return)' },
-      { id: 4, bookingId: 1, bookingCode: 'PNH-2026-001', vendorId: 5, vendorName: 'Pokhara Kitchen', serviceType: 'RESTAURANT', serviceDate: '2026-02-15', agreedCost: 45000, amountPaid: 0, paymentStatus: 'PENDING', fieldUpdatedByOperator: false, specialNotes: 'Meals in Pokhara (B, L, D for 2.5 days)' },
-      { id: 5, bookingId: 2, bookingCode: 'PNH-2026-002', vendorId: 7, vendorName: 'Himalayan Jeep Service', serviceType: 'VEHICLE', serviceDate: '2026-01-20', agreedCost: 25000, amountPaid: 25000, paymentStatus: 'SETTLED', fieldUpdatedByOperator: false, specialNotes: 'Jeep for KTM-Nayapul-KTM' },
-      { id: 6, bookingId: 2, bookingCode: 'PNH-2026-002', vendorId: 10, vendorName: 'Pasang Tamang (Guide)', serviceType: 'ACTIVITY', serviceDate: '2026-01-20', agreedCost: 40000, amountPaid: 20000, paymentStatus: 'PARTIALLY_PAID', fieldUpdatedByOperator: false, specialNotes: 'Licensed guide for 10 days including porter arrangement' },
-      { id: 7, bookingId: 4, bookingCode: 'PNH-2026-004', vendorId: 6, vendorName: 'Sajha Yatayat Bus', serviceType: 'VEHICLE', serviceDate: '2026-01-05', agreedCost: 40000, amountPaid: 40000, paymentStatus: 'SETTLED', fieldUpdatedByOperator: false, specialNotes: '60-seater bus for 2 days heritage tour' },
-      { id: 8, bookingId: 5, bookingCode: 'PNH-2026-005', vendorId: 7, vendorName: 'Himalayan Jeep Service', serviceType: 'VEHICLE', serviceDate: '2026-02-20', agreedCost: 18000, amountPaid: 0, paymentStatus: 'PENDING', fieldUpdatedByOperator: false, specialNotes: 'Jeep for family (6 pax) KTM-Syabrubesi-KTM' },
+      { id: 1, bookingId: 1, bookingCode: 'PNH-2026-020', vendorId: 1, vendorName: 'Hotel Lake Star', serviceType: 'HOTEL', serviceDate: '2026-09-20', agreedCost: 90000, amountPaid: 90000, paymentStatus: 'SETTLED', fieldUpdatedByOperator: false, specialNotes: 'School group stay' },
+      { id: 2, bookingId: 1, bookingCode: 'PNH-2026-020', vendorId: 6, vendorName: 'Sajha Yatayat Bus', serviceType: 'VEHICLE', serviceDate: '2026-09-20', agreedCost: 35000, amountPaid: 35000, paymentStatus: 'SETTLED', fieldUpdatedByOperator: false, specialNotes: 'Bus transport' },
+      { id: 3, bookingId: 3, bookingCode: 'PNH-2026-022', vendorId: 7, vendorName: 'Himalayan Jeep Service', serviceType: 'VEHICLE', serviceDate: '2026-09-25', agreedCost: 15000, amountPaid: 15000, paymentStatus: 'SETTLED', fieldUpdatedByOperator: false, specialNotes: 'KTM to trailhead jeep' },
     ];
     if (forceReset || !localStorage.getItem(DB_KEYS.ALLOCATIONS)) {
       localStorage.setItem(DB_KEYS.ALLOCATIONS, JSON.stringify(initialAllocations));
@@ -290,11 +199,9 @@ export function initializeProductionDatabase(forceReset: boolean = false): void 
 
     // 7. Vendor Payments
     const initialPayments: VendorPayment[] = [
-      { id: 1, operationAllocationId: 1, amount: 50000, paymentMode: 'BANK_TRANSFER', referenceNumber: 'NAB-TRF-2026-001', paidAt: '2026-01-28 10:30:00', recordedBy: 1, recordedByName: 'Rajesh Shrestha' },
-      { id: 2, operationAllocationId: 2, amount: 35000, paymentMode: 'BANK_TRANSFER', referenceNumber: 'NAB-TRF-2026-002', paidAt: '2026-01-25 14:15:00', recordedBy: 1, recordedByName: 'Rajesh Shrestha' },
-      { id: 3, operationAllocationId: 5, amount: 25000, paymentMode: 'BANK_TRANSFER', referenceNumber: 'NAB-TRF-2026-003', paidAt: '2026-01-18 09:00:00', recordedBy: 1, recordedByName: 'Rajesh Shrestha' },
-      { id: 4, operationAllocationId: 6, amount: 20000, paymentMode: 'ESEWA', referenceNumber: 'ESW-2026-001', paidAt: '2026-01-19 11:45:00', recordedBy: 3, recordedByName: 'Bikash Tamang' },
-      { id: 5, operationAllocationId: 7, amount: 40000, paymentMode: 'BANK_TRANSFER', referenceNumber: 'NAB-TRF-2026-004', paidAt: '2026-01-03 16:00:00', recordedBy: 1, recordedByName: 'Rajesh Shrestha' },
+      { id: 1, operationAllocationId: 1, amount: 90000, paymentMode: 'BANK_TRANSFER', referenceNumber: 'NAB-SEP-001', paidAt: '2026-09-23 10:30:00', recordedBy: 1, recordedByName: 'Rajesh Shrestha' },
+      { id: 2, operationAllocationId: 2, amount: 35000, paymentMode: 'BANK_TRANSFER', referenceNumber: 'NAB-SEP-002', paidAt: '2026-09-23 14:15:00', recordedBy: 1, recordedByName: 'Rajesh Shrestha' },
+      { id: 3, operationAllocationId: 3, amount: 15000, paymentMode: 'BANK_TRANSFER', referenceNumber: 'NAB-SEP-003', paidAt: '2026-09-25 09:00:00', recordedBy: 1, recordedByName: 'Rajesh Shrestha' },
     ];
     if (forceReset || !localStorage.getItem(DB_KEYS.VENDOR_PAYMENTS)) {
       localStorage.setItem(DB_KEYS.VENDOR_PAYMENTS, JSON.stringify(initialPayments));

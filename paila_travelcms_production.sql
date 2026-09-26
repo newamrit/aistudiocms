@@ -245,12 +245,11 @@ CREATE TABLE `bookings` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO `bookings` (`id`, `booking_code`, `client_type`, `client_name`, `client_email`, `client_phone`, `package_id`, `package_name`, `status`, `start_date`, `end_date`, `pax_count`, `total_agreed_amount`, `advance_received`, `assigned_tour_operator_id`, `assigned_tour_operator_name`, `notes`, `created_by`, `created_by_name`, `created_at`) VALUES
-(1, 'PNH-2026-001', 'INSTITUTIONAL', 'St. Xavier\'s College', 'admin@stxaviers.edu.np', '+977-1-4234567', 2, 'Pokhara Student Excursion', 'CONFIRMED', '2026-02-15', '2026-02-18', 45, 382500.00, 150000.00, NULL, NULL, 'College educational tour. Need vegetarian meal options for 10 students.', 2, 'Sita Maharjan', '2026-01-10 09:30:00'),
-(2, 'PNH-2026-002', 'FOREIGN_TREK', 'David Miller Group', 'david.miller@gmail.com', '+1-555-0199', 1, 'Annapurna Base Camp Trek', 'IN_PROGRESS', '2026-01-20', '2026-01-29', 4, 180000.00, 180000.00, 4, 'Prakash Gurung', '4 Australian trekkers. Requires porter service and gear inspection.', 2, 'Sita Maharjan', '2026-01-12 11:00:00'),
-(3, 'PNH-2026-003', 'CORPORATE', 'Nabil Bank Ltd.', 'hr@nabilbank.com', '+977-1-4567890', 4, 'Chitwan Jungle Safari', 'PROPOSED', '2026-03-05', '2026-03-07', 25, 300000.00, 0.00, NULL, NULL, 'Corporate team building event. Need conference room for 1 evening session.', 5, 'Anita Rai', '2026-01-20 10:15:00'),
-(4, 'PNH-2026-004', 'INSTITUTIONAL', 'Budhanilkantha School', 'info@budhanilkanthaschool.edu.np', '+977-1-4371234', 6, 'Kathmandu Heritage Tour', 'COMPLETED', '2026-01-05', '2026-01-06', 60, 300000.00, 300000.00, NULL, NULL, 'School heritage tour completed successfully.', 2, 'Sita Maharjan', '2025-12-20 08:00:00'),
-(5, 'PNH-2026-005', 'INDIVIDUAL', 'Ramesh & Family', 'ramesh.sharma@gmail.com', '+977-9801234567', 5, 'Langtang Valley Trek', 'CONFIRMED', '2026-02-20', '2026-02-26', 6, 195000.00, 80000.00, NULL, NULL, 'Family group with 2 children (ages 12 and 14). Moderate pace required.', 5, 'Anita Rai', '2026-01-15 15:00:00'),
-(6, 'PNH-2026-006', 'INSTITUTIONAL', 'Patan Multiple Campus', 'principal@patancampus.edu.np', '+977-1-5523456', NULL, NULL, 'PROPOSED', '2026-03-15', '2026-03-20', 35, 0.00, 0.00, NULL, NULL, 'Custom itinerary needed. College wants a mix of trekking and cultural visits. Budget: NPR 15,000 per student.', 2, 'Sita Maharjan', '2026-01-25 14:00:00');
+(1, 'PNH-2026-020', 'INSTITUTIONAL', 'St. Mary\'s School', 'info@stmarys.edu.np', '+977-1-4410000', 2, 'Pokhara Student Excursion', 'COMPLETED', '2026-09-20', '2026-09-23', 30, 255000.00, 255000.00, 4, 'Prakash Gurung', 'School group tour completed successfully.', 2, 'Sita Maharjan', '2026-09-01 09:30:00'),
+(2, 'PNH-2026-021', 'INDIVIDUAL', 'Kathmandu Local Hikers', 'kathmandu.hikers@gmail.com', '+977-9800000000', 6, 'Kathmandu Heritage Tour', 'COMPLETED', '2026-09-24', '2026-09-25', 10, 50000.00, 50000.00, 4, 'Prakash Gurung', 'Short heritage tour for local group.', 2, 'Sita Maharjan', '2026-09-22 11:00:00'),
+(3, 'PNH-2026-022', 'FOREIGN_TREK', 'John Doe (USA)', 'john.doe@example.com', '+1-555-0101', 1, 'Annapurna Base Camp Trek', 'IN_PROGRESS', '2026-09-25', '2026-10-04', 2, 90000.00, 90000.00, 4, 'Prakash Gurung', 'Starting trek today. Group healthy and excited.', 2, 'Sita Maharjan', '2026-08-20 10:15:00'),
+(4, 'PNH-2026-023', 'FOREIGN_TREK', 'Jane Smith (UK)', 'jane.smith@example.co.uk', '+44-7700-900000', 3, 'Everest View Trek', 'CONFIRMED', '2026-10-10', '2026-10-17', 1, 65000.00, 30000.00, NULL, NULL, 'Solo female traveler. Gear rental assistance needed.', 5, 'Anita Rai', '2026-09-10 08:00:00'),
+(5, 'PNH-2026-024', 'CORPORATE', 'Google Nepal Team', 'events-np@google.com', '+977-1-5500000', 4, 'Chitwan Jungle Safari', 'PROPOSED', '2026-11-05', '2026-11-07', 15, 180000.00, 0.00, NULL, NULL, 'Corporate retreat. Specific request for high-speed WiFi at resort.', 2, 'Sita Maharjan', '2026-09-20 15:00:00');
 
 -- =====================================================================
 -- 7. TABLE: booking_status_history
@@ -276,12 +275,9 @@ CREATE TABLE `booking_status_history` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO `booking_status_history` (`id`, `booking_id`, `booking_code`, `from_status`, `to_status`, `changed_by_id`, `changed_by_name`, `changed_by_role`, `reason`, `notes`, `source`, `changed_at`) VALUES
-(1, 1, 'PNH-2026-001', NULL, 'PROPOSED', 2, 'Sita Maharjan', 'SALES', 'Quotation and package proposal drafted for St. Xavier\'s College.', 'Requested 45 student slots for Pokhara Excursion.', 'ADMIN_PORTAL', '2026-01-10 09:30:00'),
-(2, 1, 'PNH-2026-001', 'PROPOSED', 'CONFIRMED', 1, 'Rajesh Shrestha', 'SUPER_ADMIN', 'Advance payment of NPR 150,000 verified in Nabil Bank.', 'Bus and hotel tentative blocks confirmed.', 'ADMIN_PORTAL', '2026-01-15 14:20:00'),
-(3, 2, 'PNH-2026-002', NULL, 'PROPOSED', 2, 'Sita Maharjan', 'SALES', 'International inquiry for Annapurna Base Camp private group.', '4 Australian trekkers.', 'ADMIN_PORTAL', '2026-01-12 11:00:00'),
-(4, 2, 'PNH-2026-002', 'PROPOSED', 'CONFIRMED', 1, 'Rajesh Shrestha', 'SUPER_ADMIN', '100% advance wire transfer cleared. ACAP permits issued.', 'Assigned senior guide Prakash Gurung.', 'ADMIN_PORTAL', '2026-01-16 10:00:00'),
-(5, 2, 'PNH-2026-002', 'CONFIRMED', 'IN_PROGRESS', 4, 'Prakash Gurung', 'TOUR_OPERATOR', 'Tour group departed Kathmandu via Himalayan Jeep Service to Nayapul.', 'Lead guide on duty.', 'FIELD_APP', '2026-01-20 06:30:00'),
-(6, 4, 'PNH-2026-004', 'IN_PROGRESS', 'COMPLETED', 1, 'Rajesh Shrestha', 'SUPER_ADMIN', 'Tour concluded with all students safely returned. Vendor accounts fully settled.', 'Zero balance pending.', 'ADMIN_PORTAL', '2026-01-06 18:00:00');
+(1, 1, 'PNH-2026-020', 'IN_PROGRESS', 'COMPLETED', 1, 'Rajesh Shrestha', 'SUPER_ADMIN', 'Tour concluded.', NULL, 'ADMIN_PORTAL', '2026-09-23 18:00:00'),
+(2, 2, 'PNH-2026-021', 'IN_PROGRESS', 'COMPLETED', 1, 'Rajesh Shrestha', 'SUPER_ADMIN', 'Tour finished.', NULL, 'ADMIN_PORTAL', '2026-09-25 17:00:00'),
+(3, 3, 'PNH-2026-022', 'CONFIRMED', 'IN_PROGRESS', 4, 'Prakash Gurung', 'TOUR_OPERATOR', 'Group started trek.', NULL, 'FIELD_APP', '2026-09-25 08:00:00');
 
 -- =====================================================================
 -- 8. TABLE: operation_allocations
@@ -312,14 +308,9 @@ CREATE TABLE `operation_allocations` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO `operation_allocations` (`id`, `booking_id`, `booking_code`, `vendor_id`, `vendor_name`, `service_type`, `service_date`, `agreed_cost`, `amount_paid`, `payment_status`, `field_updated_by_operator`, `special_notes`) VALUES
-(1, 1, 'PNH-2026-001', 1, 'Hotel Lake Star', 'HOTEL', '2026-02-15', 135000.00, 50000.00, 'PARTIALLY_PAID', 0, '15 rooms (triple sharing) for 3 nights'),
-(2, 1, 'PNH-2026-001', 6, 'Sajha Yatayat Bus', 'VEHICLE', '2026-02-15', 35000.00, 35000.00, 'SETTLED', 0, '45-seater AC bus, round trip'),
-(3, 1, 'PNH-2026-001', 4, 'Highway Dhaba', 'RESTAURANT', '2026-02-15', 22500.00, 0.00, 'PENDING', 0, 'Lunch for 45 pax x 2 days (to & return)'),
-(4, 1, 'PNH-2026-001', 5, 'Pokhara Kitchen', 'RESTAURANT', '2026-02-15', 45000.00, 0.00, 'PENDING', 0, 'Meals in Pokhara (B, L, D for 2.5 days)'),
-(5, 2, 'PNH-2026-002', 7, 'Himalayan Jeep Service', 'VEHICLE', '2026-01-20', 25000.00, 25000.00, 'SETTLED', 0, 'Jeep for KTM-Nayapul-KTM'),
-(6, 2, 'PNH-2026-002', 10, 'Pasang Tamang (Guide)', 'ACTIVITY', '2026-01-20', 40000.00, 20000.00, 'PARTIALLY_PAID', 0, 'Licensed guide for 10 days including porter arrangement'),
-(7, 4, 'PNH-2026-004', 6, 'Sajha Yatayat Bus', 'VEHICLE', '2026-01-05', 40000.00, 40000.00, 'SETTLED', 0, '60-seater bus for 2 days heritage tour'),
-(8, 5, 'PNH-2026-005', 7, 'Himalayan Jeep Service', 'VEHICLE', '2026-02-20', 18000.00, 0.00, 'PENDING', 0, 'Jeep for family (6 pax) KTM-Syabrubesi-KTM');
+(1, 1, 'PNH-2026-020', 1, 'Hotel Lake Star', 'HOTEL', '2026-09-20', 90000.00, 90000.00, 'SETTLED', 0, 'School group stay'),
+(2, 1, 'PNH-2026-020', 6, 'Sajha Yatayat Bus', 'VEHICLE', '2026-09-20', 35000.00, 35000.00, 'SETTLED', 0, 'Bus transport'),
+(3, 3, 'PNH-2026-022', 7, 'Himalayan Jeep Service', 'VEHICLE', '2026-09-25', 15000.00, 15000.00, 'SETTLED', 0, 'KTM to trailhead jeep');
 
 -- =====================================================================
 -- 9. TABLE: vendor_payments
@@ -343,11 +334,9 @@ CREATE TABLE `vendor_payments` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO `vendor_payments` (`id`, `operation_allocation_id`, `amount`, `payment_mode`, `reference_number`, `paid_at`, `recorded_by`, `recorded_by_name`) VALUES
-(1, 1, 50000.00, 'BANK_TRANSFER', 'NAB-TRF-2026-001', '2026-01-28 10:30:00', 1, 'Rajesh Shrestha'),
-(2, 2, 35000.00, 'BANK_TRANSFER', 'NAB-TRF-2026-002', '2026-01-25 14:15:00', 1, 'Rajesh Shrestha'),
-(3, 5, 25000.00, 'BANK_TRANSFER', 'NAB-TRF-2026-003', '2026-01-18 09:00:00', 1, 'Rajesh Shrestha'),
-(4, 6, 20000.00, 'ESEWA', 'ESW-2026-001', '2026-01-19 11:45:00', 3, 'Bikash Tamang'),
-(5, 7, 40000.00, 'BANK_TRANSFER', 'NAB-TRF-2026-004', '2026-01-03 16:00:00', 1, 'Rajesh Shrestha');
+(1, 1, 90000.00, 'BANK_TRANSFER', 'NAB-SEP-001', '2026-09-23 10:30:00', 1, 'Rajesh Shrestha'),
+(2, 2, 35000.00, 'BANK_TRANSFER', 'NAB-SEP-002', '2026-09-23 14:15:00', 1, 'Rajesh Shrestha'),
+(3, 3, 15000.00, 'BANK_TRANSFER', 'NAB-SEP-003', '2026-09-25 09:00:00', 1, 'Rajesh Shrestha');
 
 -- =====================================================================
 -- 10. TABLE: client_payments
@@ -370,10 +359,10 @@ CREATE TABLE `client_payments` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO `client_payments` (`id`, `booking_id`, `amount`, `payment_mode`, `reference_number`, `paid_at`, `recorded_by`, `recorded_by_name`, `notes`) VALUES
-(1, 1, 150000.00, 'BANK_TRANSFER', 'STX-DEP-001', '2026-01-15 14:00:00', 2, 'Sita Maharjan', 'Initial advance deposit for 45 pax'),
-(2, 2, 180000.00, 'BANK_TRANSFER', 'WIRE-MILLER-AU', '2026-01-16 09:30:00', 1, 'Rajesh Shrestha', 'Full payment for 4 pax ABC trek'),
-(3, 4, 300000.00, 'CHEQUE', 'CHQ-BNS-8849', '2025-12-28 11:00:00', 2, 'Sita Maharjan', 'Full school booking settlement'),
-(4, 5, 80000.00, 'ESEWA', 'ESW-RAMESH-DEP', '2026-01-22 09:30:00', 5, 'Anita Rai', 'Advance deposit for Langtang trek');
+(1, 1, 255000.00, 'BANK_TRANSFER', 'STX-SEP-001', '2026-09-15 14:00:00', 2, 'Sita Maharjan', 'Full school booking settlement'),
+(2, 2, 50000.00, 'BANK_TRANSFER', 'KTM-SEP-001', '2026-09-24 09:30:00', 1, 'Rajesh Shrestha', 'Full local group payment'),
+(3, 3, 90000.00, 'BANK_TRANSFER', 'JOHN-SEP-001', '2026-09-20 11:00:00', 2, 'Sita Maharjan', 'Full payment for ABC trek'),
+(4, 4, 30000.00, 'ESEWA', 'ESW-JANE-DEP', '2026-09-10 09:30:00', 5, 'Anita Rai', 'Advance deposit for Everest trek');
 
 -- =====================================================================
 -- 11. TABLE: system_activities

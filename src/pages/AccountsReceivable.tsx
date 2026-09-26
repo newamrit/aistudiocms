@@ -18,10 +18,10 @@ export default function AccountsReceivable() {
   const [referenceNumber, setReferenceNumber] = useState('');
 
   // Calculate totals from bookings
-  const totalAgreed = allBookings.reduce((s, b) => s + b.totalAgreedAmount, 0);
-  const totalReceived = allBookings.reduce((s, b) => s + b.advanceReceived, 0);
-  const totalPending = totalAgreed - totalReceived;
-  const pendingCount = allBookings.filter(b => b.advanceReceived < b.totalAgreedAmount).length;
+  const totalAgreed = allBookings.reduce((s, b) => s + (Number.isFinite(Number(b.totalAgreedAmount)) ? Number(b.totalAgreedAmount) : 0), 0);
+  const totalReceived = allBookings.reduce((s, b) => s + (Number.isFinite(Number(b.advanceReceived)) ? Number(b.advanceReceived) : 0), 0);
+  const totalPending = Math.max(0, totalAgreed - totalReceived);
+  const pendingCount = allBookings.filter(b => (Number(b.advanceReceived) || 0) < (Number(b.totalAgreedAmount) || 0)).length;
 
   // Filter bookings
   const filtered = allBookings.filter(b => {
@@ -208,7 +208,9 @@ export default function AccountsReceivable() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filtered.map(booking => {
-                  const balance = booking.totalAgreedAmount - booking.advanceReceived;
+                  const total = Number.isFinite(Number(booking.totalAgreedAmount)) ? Number(booking.totalAgreedAmount) : 0;
+                  const advance = Number.isFinite(Number(booking.advanceReceived)) ? Number(booking.advanceReceived) : 0;
+                  const balance = Math.max(0, total - advance);
                   const status = getPaymentStatus(booking);
                   return (
                     <tr key={booking.id} className="hover:bg-slate-50/50 transition-colors group">
@@ -223,11 +225,11 @@ export default function AccountsReceivable() {
                       <td className="px-5 py-3.5">
                         <p className="text-sm text-slate-700">{booking.packageName || 'Custom'}</p>
                         <p className="text-[10px] text-slate-500 flex items-center gap-1 mt-0.5">
-                          <Users size={10} /> {booking.paxCount} pax
+                          <Users size={10} /> {Number.isFinite(Number(booking.paxCount)) ? booking.paxCount : 1} pax
                         </p>
                       </td>
-                      <td className="px-5 py-3.5 text-sm font-medium text-slate-900">NPR {booking.totalAgreedAmount.toLocaleString()}</td>
-                      <td className="px-5 py-3.5 text-sm text-green-600 font-medium">NPR {booking.advanceReceived.toLocaleString()}</td>
+                      <td className="px-5 py-3.5 text-sm font-medium text-slate-900">NPR {total.toLocaleString()}</td>
+                      <td className="px-5 py-3.5 text-sm text-green-600 font-medium">NPR {advance.toLocaleString()}</td>
                       <td className="px-5 py-3.5">
                         <span className={`text-sm font-bold ${balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
                           NPR {balance.toLocaleString()}
@@ -262,9 +264,9 @@ export default function AccountsReceivable() {
               <tfoot>
                 <tr className="bg-slate-50 border-t-2 border-slate-200">
                   <td colSpan={3} className="px-5 py-3 text-sm font-semibold text-slate-700">TOTALS</td>
-                  <td className="px-5 py-3 text-sm font-bold text-slate-900">NPR {filtered.reduce((s, b) => s + b.totalAgreedAmount, 0).toLocaleString()}</td>
-                  <td className="px-5 py-3 text-sm font-bold text-green-700">NPR {filtered.reduce((s, b) => s + b.advanceReceived, 0).toLocaleString()}</td>
-                  <td className="px-5 py-3 text-sm font-bold text-red-600">NPR {filtered.reduce((s, b) => s + (b.totalAgreedAmount - b.advanceReceived), 0).toLocaleString()}</td>
+                  <td className="px-5 py-3 text-sm font-bold text-slate-900">NPR {filtered.reduce((s, b) => s + (Number.isFinite(Number(b.totalAgreedAmount)) ? Number(b.totalAgreedAmount) : 0), 0).toLocaleString()}</td>
+                  <td className="px-5 py-3 text-sm font-bold text-green-700">NPR {filtered.reduce((s, b) => s + (Number.isFinite(Number(b.advanceReceived)) ? Number(b.advanceReceived) : 0), 0).toLocaleString()}</td>
+                  <td className="px-5 py-3 text-sm font-bold text-red-600">NPR {filtered.reduce((s, b) => s + Math.max(0, (Number(b.totalAgreedAmount) || 0) - (Number(b.advanceReceived) || 0)), 0).toLocaleString()}</td>
                   <td colSpan={2}></td>
                 </tr>
               </tfoot>
@@ -292,11 +294,14 @@ export default function AccountsReceivable() {
                   className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-paila-blue/20 focus:border-paila-blue outline-none"
                 >
                   <option value="">Select booking...</option>
-                  {allBookings.filter(b => b.advanceReceived < b.totalAgreedAmount).map(b => (
-                    <option key={b.id} value={b.id}>
-                      {b.bookingCode} - {b.clientName} (Due: NPR {(b.totalAgreedAmount - b.advanceReceived).toLocaleString()})
-                    </option>
-                  ))}
+                  {allBookings.filter(b => (Number(b.advanceReceived) || 0) < (Number(b.totalAgreedAmount) || 0)).map(b => {
+                    const due = Math.max(0, (Number(b.totalAgreedAmount) || 0) - (Number(b.advanceReceived) || 0));
+                    return (
+                      <option key={b.id} value={b.id}>
+                        {b.bookingCode} - {b.clientName} (Due: NPR {due.toLocaleString()})
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-4">

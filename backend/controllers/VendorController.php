@@ -83,10 +83,10 @@ class VendorController {
         $user = AuthMiddleware::requireRole(['SUPER_ADMIN', 'OPERATIONS']);
         $input = SecurityHeaders::getJsonInput();
 
-        $allocationId = (int)($input['operationAllocationId'] ?? $input['allocationId'] ?? 0);
+        $allocationId = (int)($input['operationAllocationId'] ?? $input['operation_allocation_id'] ?? $input['allocationId'] ?? $input['allocation_id'] ?? 0);
         $amount = (float)($input['amount'] ?? 0.0);
-        $paymentMode = $input['paymentMode'] ?? 'BANK_TRANSFER';
-        $referenceNumber = SecurityHeaders::sanitizeString($input['referenceNumber'] ?? '');
+        $paymentMode = $input['paymentMode'] ?? $input['payment_mode'] ?? 'BANK_TRANSFER';
+        $referenceNumber = SecurityHeaders::sanitizeString($input['referenceNumber'] ?? $input['reference_number'] ?? '');
 
         if ($allocationId <= 0 || $amount <= 0) {
             http_response_code(422);

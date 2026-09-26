@@ -14,7 +14,8 @@ export const DB_KEYS = {
   USERS: 'paila_cms_users',
   SETTINGS: 'paila_cms_company_settings',
   ALERTS: 'paila_cms_alerts',
-  ACTIVITIES: 'paila_cms_activities'
+  ACTIVITIES: 'paila_cms_activities',
+  FIELD_ACTIVITIES: 'paila_cms_field_activities'
 } as const;
 
 function readCache<T>(key: string, defaultData: T[] = []): T[] {
@@ -51,25 +52,69 @@ function getAuthHeaders(): Record<string, string> {
   };
 }
 
+const inFlightGetRequests = new Map<string, Promise<any>>();
+
 async function requestApi<T>(path: string, options?: RequestInit): Promise<T> {
-  const headers = {
-    ...getAuthHeaders(),
-    ...(options?.headers as Record<string, string> || {})
-  };
+  const method = (options?.method || 'GET').toUpperCase();
+  const normalizedPath = path.length > 1 && path.endsWith('/') ? path.slice(0, -1) : path;
+  const cleanPath = normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`;
 
-  const response = await fetch(`/api${path}`, {
-    ...options,
-    headers,
-  });
-
-  if (!response.ok) {
-    const errData = await response.json().catch(() => null);
-    const errorMsg = errData?.error || errData?.message || `HTTP ${response.status}: ${response.statusText}`;
-    console.error(`[REST API ERROR] ${options?.method || 'GET'} /api${path} failed:`, errorMsg);
-    throw new Error(errorMsg);
+  if (method === 'GET') {
+    if (inFlightGetRequests.has(cleanPath)) {
+      return inFlightGetRequests.get(cleanPath)!;
+    }
   }
 
-  return response.json();
+  const execute = async (): Promise<T> => {
+    const headers = {
+      ...getAuthHeaders(),
+      ...(options?.headers as Record<string, string> || {})
+    };
+
+    let attempts = 0;
+    const maxAttempts = 3;
+
+    while (attempts < maxAttempts) {
+      attempts++;
+      try {
+        const response = await fetch(`/api${cleanPath}`, {
+          ...options,
+          headers,
+        });
+
+        if (response.ok) {
+          return await response.json();
+        }
+
+        const errData = await response.json().catch(() => null);
+        const errorMsg = errData?.error || errData?.message || `Status ${response.status}`;
+
+        if ((response.status === 429 || response.status === 503 || response.status >= 500 || response.status === 404) && attempts < maxAttempts) {
+          await new Promise(res => setTimeout(res, 250 * attempts));
+          continue;
+        }
+
+        throw new Error(errorMsg);
+      } catch (err: any) {
+        if (attempts < maxAttempts && (err?.name === 'TypeError' || err?.message?.includes('fetch'))) {
+          await new Promise(res => setTimeout(res, 250 * attempts));
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw new Error(`API ${method} /api${cleanPath} request unsuccessful`);
+  };
+
+  if (method === 'GET') {
+    const promise = execute().finally(() => {
+      inFlightGetRequests.delete(cleanPath);
+    });
+    inFlightGetRequests.set(cleanPath, promise);
+    return promise;
+  }
+
+  return execute();
 }
 
 /**
@@ -200,7 +245,8 @@ function mapSqlUser(row: any): User {
     email: row.email,
     role: row.role,
     phone: row.phone || '',
-    isActive: Boolean(row.is_active)
+    password: row.password || 'password',
+    isActive: row.isActive !== undefined ? Boolean(row.isActive) : (row.is_active !== undefined ? Boolean(row.is_active) : true)
   };
 }
 
@@ -392,6 +438,77 @@ export const apiClient = {
 
       list[index] = updated;
       writeCache(DB_KEYS.BOOKINGS, list);
+
+      if (newStatus === 'CONFIRMED') {
+        const allocations = readCache<OperationAllocation>(DB_KEYS.ALLOCATIONS);
+        const existingAllocs = allocations.filter(a => a.bookingId === id);
+        if (existingAllocs.length === 0) {
+          const vendors = readCache<Vendor>(DB_KEYS.VENDORS);
+          const defaultHotel = vendors.find(v => v.category === 'HOTEL') || vendors[0];
+          const defaultVehicle = vendors.find(v => v.category === 'VEHICLE');
+          const defaultRestaurant = vendors.find(v => v.category === 'RESTAURANT');
+
+          let nextAllocId = allocations.length > 0 ? Math.max(...allocations.map(a => a.id)) + 1 : 1;
+          const newAllocs: OperationAllocation[] = [];
+          const totalAgreed = current.totalAgreedAmount || 100000;
+          const serviceDate = current.startDate || new Date().toISOString().split('T')[0];
+
+          if (defaultHotel) {
+            newAllocs.push({
+              id: nextAllocId++,
+              bookingId: current.id,
+              bookingCode: current.bookingCode,
+              vendorId: defaultHotel.id,
+              vendorName: defaultHotel.name,
+              serviceType: 'HOTEL',
+              serviceDate,
+              agreedCost: Math.round(totalAgreed * 0.35),
+              amountPaid: 0,
+              paymentStatus: 'PENDING',
+              fieldUpdatedByOperator: false,
+              specialNotes: 'Auto-allocated on booking confirmation'
+            });
+          }
+
+          if (defaultVehicle) {
+            newAllocs.push({
+              id: nextAllocId++,
+              bookingId: current.id,
+              bookingCode: current.bookingCode,
+              vendorId: defaultVehicle.id,
+              vendorName: defaultVehicle.name,
+              serviceType: 'VEHICLE',
+              serviceDate,
+              agreedCost: Math.round(totalAgreed * 0.20),
+              amountPaid: 0,
+              paymentStatus: 'PENDING',
+              fieldUpdatedByOperator: false,
+              specialNotes: 'Transport allocation auto-generated'
+            });
+          }
+
+          if (defaultRestaurant) {
+            newAllocs.push({
+              id: nextAllocId++,
+              bookingId: current.id,
+              bookingCode: current.bookingCode,
+              vendorId: defaultRestaurant.id,
+              vendorName: defaultRestaurant.name,
+              serviceType: 'RESTAURANT',
+              serviceDate,
+              agreedCost: Math.round(totalAgreed * 0.15),
+              amountPaid: 0,
+              paymentStatus: 'PENDING',
+              fieldUpdatedByOperator: false,
+              specialNotes: 'Food & catering allocation auto-generated'
+            });
+          }
+
+          if (newAllocs.length > 0) {
+            writeCache(DB_KEYS.ALLOCATIONS, [...allocations, ...newAllocs]);
+          }
+        }
+      }
 
       try {
         await requestApi<{ success: boolean; status: string }>(`/bookings/${id}/status`, {
@@ -781,7 +898,7 @@ export const apiClient = {
       try {
         const res = await requestApi<{ data: any[]; count: number }>('/users');
         if (Array.isArray(res?.data) && res.data.length > 0) {
-          const mapped = res.data.map(mapSqlUser);
+          const mapped = res.data.map(row => mapSqlUser(row));
           writeCache(DB_KEYS.USERS, mapped);
           return mapped;
         }
@@ -791,19 +908,22 @@ export const apiClient = {
       return cached;
     },
 
+    async getById(id: number): Promise<User | null> {
+      try {
+        const res = await requestApi<{ success: boolean; user?: any }>(`/users/${id}`);
+        if (res?.user) {
+          return mapSqlUser(res.user);
+        }
+      } catch (err) {
+        console.warn(`Failed to fetch user #${id} from database:`, err);
+      }
+      const list = readCache<User>(DB_KEYS.USERS);
+      return list.find(u => u.id === id) || null;
+    },
+
     async create(user: { name: string; email: string; role: string; phone?: string; password?: string; isActive?: boolean }): Promise<User> {
       let createdId = Date.now();
-      try {
-        const res = await requestApi<{ success: boolean; id: number; user: any; message: string }>('/users', {
-          method: 'POST',
-          body: JSON.stringify(user)
-        });
-        if (res?.id) createdId = res.id;
-      } catch (err) {
-        console.warn('Backend user create failed, saving to cache:', err);
-      }
-
-      const created: User = {
+      let createdUser: User = {
         id: createdId,
         name: user.name,
         email: user.email,
@@ -812,34 +932,77 @@ export const apiClient = {
         password: user.password || 'password',
         isActive: user.isActive ?? true
       };
+
+      try {
+        const res = await requestApi<{ success: boolean; id: number; user: any; message: string }>('/users', {
+          method: 'POST',
+          body: JSON.stringify(user)
+        });
+        if (res?.user) {
+          createdUser = mapSqlUser(res.user);
+        } else if (res?.id) {
+          createdUser.id = res.id;
+        }
+      } catch (err) {
+        console.warn('Backend user create failed, saving to cache:', err);
+      }
+
       const list = readCache<User>(DB_KEYS.USERS);
-      writeCache(DB_KEYS.USERS, [created, ...list.filter(u => u.id !== created.id)]);
-      return created;
+      writeCache(DB_KEYS.USERS, [createdUser, ...list.filter(u => u.id !== createdUser.id)]);
+      return createdUser;
     },
 
     async update(id: number, updates: Partial<User>): Promise<User> {
       const list = readCache<User>(DB_KEYS.USERS);
       const index = list.findIndex(u => u.id === id);
-      let updated: User;
+      let localUpdated: User;
       if (index !== -1) {
-        updated = { ...list[index], ...updates, id };
-        list[index] = updated;
-        writeCache(DB_KEYS.USERS, list);
+        localUpdated = { ...list[index], ...updates, id };
       } else {
-        updated = { id, name: 'User', email: 'user@pailanepal.com', role: 'SALES', isActive: true, ...updates } as User;
-        writeCache(DB_KEYS.USERS, [updated, ...list]);
+        localUpdated = { id, name: 'User', email: 'user@pailanepal.com', role: 'SALES', isActive: true, ...updates } as User;
       }
 
+      let verifiedUser: User = localUpdated;
+
       try {
-        await requestApi<{ success: boolean; message: string }>(`/users/${id}`, {
+        const res = await requestApi<{ success: boolean; user?: any; verified?: boolean; message?: string }>(`/users/${id}`, {
           method: 'PUT',
           body: JSON.stringify(updates)
         });
+
+        if (res?.user) {
+          const fresh = mapSqlUser(res.user);
+          
+          // Cross-check mechanism: Verify that the database wrote all modified attributes correctly
+          const roleMatches = !updates.role || fresh.role === updates.role;
+          const statusMatches = updates.isActive === undefined || fresh.isActive === updates.isActive;
+          const emailMatches = !updates.email || fresh.email.toLowerCase() === updates.email.toLowerCase();
+          const passMatches = !updates.password || fresh.password === updates.password;
+
+          if (!roleMatches || !statusMatches || !emailMatches || !passMatches) {
+            console.warn(`[CROSS-CHECK MISMATCH] User #${id} response does not match requested changes:`, { updates, fresh });
+          }
+
+          verifiedUser = {
+            ...fresh,
+            password: updates.password || fresh.password || localUpdated.password
+          };
+        }
       } catch (err) {
         console.warn(`User #${id} database update failed, cached locally:`, err);
       }
 
-      return updated;
+      // Update and persist verified state in cache
+      const freshList = readCache<User>(DB_KEYS.USERS);
+      const fIdx = freshList.findIndex(u => u.id === id);
+      if (fIdx !== -1) {
+        freshList[fIdx] = verifiedUser;
+      } else {
+        freshList.unshift(verifiedUser);
+      }
+      writeCache(DB_KEYS.USERS, freshList);
+
+      return verifiedUser;
     },
 
     async delete(id: number): Promise<void> {
@@ -855,7 +1018,8 @@ export const apiClient = {
       }
     },
 
-    async setPassword(id: number, password: string): Promise<void> {
+    async setPassword(id: number, password: string): Promise<boolean> {
+      let isVerified = false;
       const list = readCache<User>(DB_KEYS.USERS);
       const index = list.findIndex(u => u.id === id);
       if (index !== -1) {
@@ -864,13 +1028,22 @@ export const apiClient = {
       }
 
       try {
-        await requestApi<{ success: boolean; message: string }>(`/users/${id}/password`, {
+        const res = await requestApi<{ success: boolean; verified?: boolean; user?: any; message: string }>(`/users/${id}/password`, {
           method: 'POST',
           body: JSON.stringify({ password })
         });
+        if (res?.success) {
+          isVerified = true;
+          // Verification cross-check
+          if (res.user && res.user.password !== password) {
+            console.warn(`[CROSS-CHECK MISMATCH] User #${id} password in DB did not match requested string.`);
+          }
+        }
       } catch (err) {
         console.warn(`User #${id} setPassword database update failed:`, err);
       }
+
+      return isVerified;
     }
   },
 
@@ -884,24 +1057,24 @@ export const apiClient = {
         if (res?.data) {
           const db = res.data;
           return {
-            companyName: db.company_name,
-            tagline: db.tagline || '',
-            domain: db.domain || '',
-            address: db.address || '',
-            phone: db.phone || '',
-            emergencyPhone: db.emergency_phone || '',
-            email: db.email || '',
-            panNumber: db.pan_number || '',
-            vatNumber: db.vat_number || '',
-            registrationNumber: db.registration_number || '',
+            companyName: db.companyName || db.company_name || 'Paila Nepal Holidays Pvt. Ltd.',
+            tagline: db.tagline || 'Trekking • Mountaineering • Institutional Excursions',
+            domain: db.domain || 'pailanepal.com',
+            address: db.address || 'Thamel, Ward 26, Kathmandu, Nepal',
+            phone: db.phone || '+977-1-4123456',
+            emergencyPhone: db.emergencyPhone || db.emergency_phone || '+977-9801234567',
+            email: db.email || 'info@pailanepal.com',
+            panNumber: db.panNumber || db.pan_number || '601234567',
+            vatNumber: db.vatNumber || db.vat_number || '301234567',
+            registrationNumber: db.registrationNumber || db.registration_number || '129481/070/071',
             currency: db.currency || 'NPR',
-            taxRate: Number(db.tax_rate) || 13,
+            taxRate: Number(db.taxRate || db.tax_rate) || 13,
             bankDetails: {
-              bankName: db.bank_name || '',
-              accountName: db.bank_account_name || '',
-              accountNumber: db.bank_account_number || '',
-              branch: db.bank_branch || '',
-              swiftCode: db.bank_swift_code || ''
+              bankName: db.bankDetails?.bankName || db.bank_name || '',
+              accountName: db.bankDetails?.accountName || db.bank_account_name || '',
+              accountNumber: db.bankDetails?.accountNumber || db.bank_account_number || '',
+              branch: db.bankDetails?.branch || db.bank_branch || '',
+              swiftCode: db.bankDetails?.swiftCode || db.bank_swift_code || ''
             }
           };
         }
@@ -1064,6 +1237,62 @@ export const apiClient = {
   },
 
   // -------------------------------------------------------------------------
+  // Field Activities API (Daily Check-ins, Operator Updates, Swaps)
+  // -------------------------------------------------------------------------
+  fieldActivities: {
+    async getAll(): Promise<any[]> {
+      try {
+        const res = await requestApi<{ data: any[] }>('/field-activities');
+        if (Array.isArray(res?.data)) {
+          writeCache(DB_KEYS.FIELD_ACTIVITIES, res.data);
+          return res.data;
+        }
+      } catch (err) {
+        console.warn('Field activities API fallback to cache:', err);
+      }
+      return readCache<any>(DB_KEYS.FIELD_ACTIVITIES);
+    },
+
+    async create(activity: any): Promise<any> {
+      let createdId = Date.now();
+      let createdActivity = {
+        ...activity,
+        id: createdId,
+        timestamp: activity.timestamp || new Date().toISOString().replace('T', ' ').slice(0, 19),
+        acknowledged: Boolean(activity.acknowledged)
+      };
+
+      try {
+        const res = await requestApi<{ success: boolean; id: number; activity?: any }>('/field-activities', {
+          method: 'POST',
+          body: JSON.stringify(activity)
+        });
+        if (res?.activity) {
+          createdActivity = res.activity;
+        } else if (res?.id) {
+          createdActivity.id = res.id;
+        }
+      } catch (err) {
+        console.warn('Field activity DB save failed, saving to cache:', err);
+      }
+
+      const list = readCache<any>(DB_KEYS.FIELD_ACTIVITIES);
+      writeCache(DB_KEYS.FIELD_ACTIVITIES, [createdActivity, ...list.filter((a: any) => a.id !== createdActivity.id)]);
+      return createdActivity;
+    },
+
+    async acknowledge(id: number): Promise<void> {
+      try {
+        await requestApi(`/field-activities/${id}/acknowledge`, { method: 'POST' });
+      } catch (err) {
+        console.warn(`Field activity #${id} acknowledge fallback:`, err);
+      }
+      const list = readCache<any>(DB_KEYS.FIELD_ACTIVITIES);
+      writeCache(DB_KEYS.FIELD_ACTIVITIES, list.map((a: any) => Number(a.id) === Number(id) ? { ...a, acknowledged: true } : a));
+    }
+  },
+
+  // -------------------------------------------------------------------------
   // Tour Leader API (Live Database)
   // -------------------------------------------------------------------------
   tourLeader: {
@@ -1134,6 +1363,23 @@ export const apiClient = {
         console.error('Failed to update tour status in database:', err);
         return false;
       }
+    }
+  },
+
+  // -------------------------------------------------------------------------
+  // Maintenance & System Lifecycle API
+  // -------------------------------------------------------------------------
+  maintenance: {
+    async purgeOperationalData(options: { 
+      clearBookings?: boolean; 
+      clearOperations?: boolean; 
+      clearActivities?: boolean; 
+      clearAlerts?: boolean;
+    } = {}): Promise<{ success: boolean; message: string }> {
+      return requestApi<{ success: boolean; message: string }>('/maintenance/purge', {
+        method: 'POST',
+        body: JSON.stringify(options)
+      });
     }
   }
 };

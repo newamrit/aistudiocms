@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef, Re
 import { useAuth } from './AuthContext';
 import { apiClient, DB_KEYS } from '../api/apiClient';
 import { sounds } from '../utils/sounds';
+import { SyncQueue, SyncManager } from '../utils/offlineDB';
 
 export interface Alert {
   id: number;
@@ -23,9 +24,21 @@ export interface Alert {
   tour_leader_phone?: string;
   booking_code?: string;
   client_name?: string;
+  is_system_offline_alert?: boolean;
 }
 
-interface AlertContextType {
+export interface OfflineQueueItem {
+  id?: string | number;
+  endpoint?: string;
+  method?: string;
+  retryCount?: number;
+  timestamp?: Date | number | string;
+  payload?: any;
+  status?: string;
+  [key: string]: any;
+}
+
+export interface AlertContextType {
   alerts: Alert[];
   unreadCount: number;
   loading: boolean;
@@ -37,6 +50,21 @@ interface AlertContextType {
   refreshAlerts: () => Promise<void>;
   setAllAlerts: (newAlerts: Alert[]) => void;
   resetToZeroState: () => void;
+  // Offline & Synchronization State:
+  isOnline: boolean;
+  isApiConnected: boolean;
+  connectionStatus: 'online' | 'offline' | 'degraded' | 'reconnecting';
+  pendingSyncCount: number;
+  lastSyncTime: Date | null;
+  syncing: boolean;
+  simulateOffline: boolean;
+  setSimulateOffline: React.Dispatch<React.SetStateAction<boolean>>;
+  retrySync: () => Promise<void>;
+  dismissOfflineAlert: () => void;
+  isOfflineAlertDismissed: boolean;
+  setIsOfflineAlertDismissed: React.Dispatch<React.SetStateAction<boolean>>;
+  reconnectSuccess: boolean;
+  offlineQueueItems: OfflineQueueItem[];
 }
 
 const AlertContext = createContext<AlertContextType | undefined>(undefined);
@@ -126,6 +154,18 @@ export function AlertProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const alertsRef = useRef<Alert[]>(alerts);
   alertsRef.current = alerts;
+
+  // Offline & Synchronization State
+  const [isOnline, setIsOnline] = useState<boolean>(() => (typeof navigator !== 'undefined' ? navigator.onLine : true));
+  const [simulateOffline, setSimulateOffline] = useState<boolean>(false);
+  const [isApiConnected, setIsApiConnected] = useState<boolean>(true);
+  const [connectionStatus, setConnectionStatus] = useState<'online' | 'offline' | 'degraded' | 'reconnecting'>('online');
+  const [pendingSyncCount, setPendingSyncCount] = useState<number>(0);
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(() => new Date());
+  const [syncing, setSyncing] = useState<boolean>(false);
+  const [isOfflineAlertDismissed, setIsOfflineAlertDismissed] = useState<boolean>(false);
+  const [reconnectSuccess, setReconnectSuccess] = useState<boolean>(false);
+  const [offlineQueueItems, setOfflineQueueItems] = useState<OfflineQueueItem[]>([]);
 
   // Sync to local storage
   useEffect(() => {
@@ -240,10 +280,10 @@ export function AlertProvider({ children }: { children: ReactNode }) {
     window.addEventListener('storage', handleStorageChange);
     window.addEventListener('paila_alert_created' as any, handleCustomEvent);
 
-    // Live background polling every 2.5s for near-instant synchronization
+    // Live background polling every 20s for synchronization
     const pollInterval = setInterval(() => {
       fetchAlerts(false);
-    }, 2500);
+    }, 20000);
 
     return () => {
       if (channel) {
@@ -399,6 +439,173 @@ export function AlertProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const dismissOfflineAlert = useCallback(() => {
+    setIsOfflineAlertDismissed(true);
+  }, []);
+
+  const retrySync = useCallback(async () => {
+    if (syncing) return;
+    setSyncing(true);
+    SyncManager.notifyProgress({
+      stage: 'syncing',
+      progress: 25,
+      current: 0,
+      total: 0,
+      message: 'Synchronizing with cloud server...',
+      timestamp: Date.now(),
+    });
+    try {
+      if (!simulateOffline) {
+        setConnectionStatus('reconnecting');
+        try {
+          await SyncManager.processQueue();
+        } catch (e) {
+          console.warn('Queue process error:', e);
+        }
+        await fetchAlerts(false);
+        setLastSyncTime(new Date());
+        setIsApiConnected(true);
+        setConnectionStatus('online');
+        setReconnectSuccess(true);
+        setTimeout(() => setReconnectSuccess(false), 4000);
+        try {
+          const pending = await SyncQueue.getPending();
+          setOfflineQueueItems(pending || []);
+          setPendingSyncCount(pending?.length || 0);
+        } catch {
+          setOfflineQueueItems([]);
+          setPendingSyncCount(0);
+        }
+      }
+    } catch (err) {
+      console.warn('Sync failed:', err);
+      setConnectionStatus('offline');
+      setIsApiConnected(false);
+      SyncManager.notifyProgress({
+        stage: 'error',
+        progress: 100,
+        current: 0,
+        total: 0,
+        message: 'Sync interrupted — retrying when connection improves',
+        timestamp: Date.now(),
+      });
+    } finally {
+      setSyncing(false);
+    }
+  }, [syncing, simulateOffline, fetchAlerts]);
+
+  // Online / offline window event handlers
+  useEffect(() => {
+    const handleOnline = async () => {
+      setIsOnline(true);
+      if (!simulateOffline) {
+        setConnectionStatus('reconnecting');
+        setSyncing(true);
+        SyncManager.notifyProgress({
+          stage: 'reconnecting',
+          progress: 15,
+          current: 0,
+          total: 0,
+          message: 'Internet connection restored • Syncing data...',
+          timestamp: Date.now(),
+        });
+        try {
+          await SyncManager.processQueue();
+          await fetchAlerts(false);
+          setIsApiConnected(true);
+          setConnectionStatus('online');
+          setReconnectSuccess(true);
+          setTimeout(() => setReconnectSuccess(false), 4000);
+        } catch {
+          setConnectionStatus('degraded');
+        } finally {
+          setSyncing(false);
+        }
+      }
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+      setIsApiConnected(false);
+      setConnectionStatus('offline');
+      SyncManager.notifyProgress({
+        stage: 'idle',
+        progress: 0,
+        current: 0,
+        total: 0,
+        message: '',
+        timestamp: Date.now(),
+      });
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [simulateOffline, fetchAlerts]);
+
+  // Handle simulation toggle
+  const prevSimulateRef = useRef<boolean>(simulateOffline);
+  useEffect(() => {
+    const wasSimulated = prevSimulateRef.current;
+    prevSimulateRef.current = simulateOffline;
+
+    if (simulateOffline) {
+      setIsApiConnected(false);
+      setConnectionStatus('offline');
+      setIsOfflineAlertDismissed(false);
+      SyncManager.notifyProgress({
+        stage: 'idle',
+        progress: 0,
+        current: 0,
+        total: 0,
+        message: '',
+        timestamp: Date.now(),
+      });
+    } else {
+      const online = typeof navigator !== 'undefined' ? navigator.onLine : true;
+      setIsOnline(online);
+      if (online) {
+        setIsApiConnected(true);
+        setConnectionStatus('online');
+        // If exiting simulation, trigger reconnect sync progress
+        if (wasSimulated) {
+          SyncManager.notifyProgress({
+            stage: 'reconnecting',
+            progress: 20,
+            current: 0,
+            total: 0,
+            message: 'Internet connection restored • Synchronizing...',
+            timestamp: Date.now(),
+          });
+          SyncManager.processQueue();
+        }
+      } else {
+        setIsApiConnected(false);
+        setConnectionStatus('offline');
+      }
+    }
+  }, [simulateOffline]);
+
+  // Periodically refresh offline queue stats
+  useEffect(() => {
+    const updateQueueStats = async () => {
+      try {
+        const pending = await SyncQueue.getPending();
+        setOfflineQueueItems(pending || []);
+        setPendingSyncCount(pending?.length || 0);
+      } catch {
+        // ignore
+      }
+    };
+    updateQueueStats();
+    const queueInterval = setInterval(updateQueueStats, 5000);
+    return () => clearInterval(queueInterval);
+  }, []);
+
   const unreadCount = alerts.filter(alert => alert.status === 'PENDING').length;
 
   return (
@@ -415,6 +622,21 @@ export function AlertProvider({ children }: { children: ReactNode }) {
         refreshAlerts: () => fetchAlerts(false),
         setAllAlerts,
         resetToZeroState,
+        // Offline & Sync Properties
+        isOnline,
+        isApiConnected,
+        connectionStatus,
+        pendingSyncCount,
+        lastSyncTime,
+        syncing,
+        simulateOffline,
+        setSimulateOffline,
+        retrySync,
+        dismissOfflineAlert,
+        isOfflineAlertDismissed,
+        setIsOfflineAlertDismissed,
+        reconnectSuccess,
+        offlineQueueItems,
       }}
     >
       {children}

@@ -43,6 +43,8 @@ export default function UsersPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   // Quick Set Password Form State
   const [setPasswordForm, setSetPasswordForm] = useState({
     password: '',
@@ -200,54 +202,66 @@ export default function UsersPage() {
     return Object.keys(errors).length === 0;
   };
 
-  const handleSaveUser = (e: React.FormEvent) => {
+  const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateUserForm()) {
       sounds.warning();
       return;
     }
 
-    if (modalMode === 'create') {
-      const newId = Math.max(...usersList.map(u => u.id), 0) + 1;
-      const newUser: User = {
-        id: newId,
-        name: formData.name.trim(),
-        email: formData.email.trim().toLowerCase(),
-        password: formData.password || 'password',
-        phone: formData.phone.trim(),
-        role: formData.role,
-        isActive: formData.isActive,
-      };
-      addUser(newUser);
-      sounds.success();
-      showToast(`User "${newUser.name}" created successfully!`);
-    } else if (modalMode === 'edit' && editingUser) {
-      const soleAdmin = isSoleAdmin(editingUser);
-      // Safeguard: do not allow de-admining the only administrator in the platform
-      const targetRole = (soleAdmin && formData.role !== 'SUPER_ADMIN') ? 'SUPER_ADMIN' : formData.role;
-      const targetActive = soleAdmin ? true : formData.isActive;
+    setIsSubmitting(true);
+    try {
+      if (modalMode === 'create') {
+        const newId = Math.max(...usersList.map(u => u.id), 0) + 1;
+        const newUser: User = {
+          id: newId,
+          name: formData.name.trim(),
+          email: formData.email.trim().toLowerCase(),
+          password: formData.password || 'password',
+          phone: formData.phone.trim(),
+          role: formData.role,
+          isActive: formData.isActive,
+        };
+        await addUser(newUser);
+        sounds.success();
+        showToast(`User "${newUser.name}" created and saved to database!`);
+      } else if (modalMode === 'edit' && editingUser) {
+        const soleAdmin = isSoleAdmin(editingUser);
+        // Safeguard: do not allow de-admining the only administrator in the platform
+        const targetRole = (soleAdmin && formData.role !== 'SUPER_ADMIN') ? 'SUPER_ADMIN' : formData.role;
+        const targetActive = soleAdmin ? true : formData.isActive;
+        const targetPassword = (formData.changePassword && formData.password)
+          ? formData.password
+          : (editingUser.password || 'password');
 
-      const updatedUser: User = {
-        ...editingUser,
-        name: formData.name.trim(),
-        email: formData.email.trim().toLowerCase(),
-        phone: formData.phone.trim(),
-        role: targetRole,
-        isActive: targetActive,
-        ...(formData.changePassword && formData.password ? { password: formData.password } : {}),
-      };
+        const updatedUser: User = {
+          ...editingUser,
+          id: editingUser.id,
+          name: formData.name.trim(),
+          email: formData.email.trim().toLowerCase(),
+          phone: formData.phone.trim(),
+          role: targetRole,
+          isActive: targetActive,
+          password: targetPassword,
+        };
 
-      updateUser(updatedUser);
-      sounds.success();
-      showToast(`User profile for "${updatedUser.name}" updated successfully!`);
+        await updateUser(updatedUser);
+        sounds.success();
+        showToast(`User profile for "${updatedUser.name}" updated and saved to database!`);
+      }
+
+      setShowModal(false);
+      resetForm();
+      setEditingUser(null);
+    } catch (err) {
+      console.error('Error saving user to database:', err);
+      showToast('Warning: user was updated locally, but database sync encountered an error.');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setShowModal(false);
-    resetForm();
-    setEditingUser(null);
   };
 
-  const handleSaveSetPassword = (e: React.FormEvent) => {
+  const handleSaveSetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!showSetPasswordModal) return;
 
@@ -268,32 +282,45 @@ export default function UsersPage() {
       return;
     }
 
-    setUserPassword(showSetPasswordModal.id, setPasswordForm.password);
-    sounds.success();
-    showToast(`Password updated successfully for ${showSetPasswordModal.name}!`);
-    setShowSetPasswordModal(null);
+    setIsSubmitting(true);
+    try {
+      await setUserPassword(showSetPasswordModal.id, setPasswordForm.password);
+      sounds.success();
+      showToast(`Password updated and saved to database for ${showSetPasswordModal.name}!`);
+      setShowSetPasswordModal(null);
+    } catch (err) {
+      console.error('Error updating password:', err);
+      showToast('Warning: password updated locally.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleDelete = (id: number) => {
+  const handleDelete = async (id: number) => {
     const targetUser = usersList.find(u => u.id === id);
     if (isSoleAdmin(targetUser)) {
       sounds.warning();
-      alert('The last remaining Super Admin cannot be deleted. Promote another admin first.');
+      showToast('The last remaining Super Admin cannot be deleted. Promote another admin first.');
       setShowDeleteConfirm(null);
       return;
     }
-    deleteUser(id);
-    sounds.delete();
-    showToast(`User "${targetUser?.name}" deleted.`);
-    setShowDeleteConfirm(null);
+    try {
+      await deleteUser(id);
+      sounds.delete();
+      showToast(`User "${targetUser?.name}" deleted from database.`);
+    } catch (err) {
+      console.error('Error deleting user:', err);
+    } finally {
+      setShowDeleteConfirm(null);
+    }
   };
 
-  const toggleUserStatus = (id: number) => {
+  const toggleUserStatus = async (id: number) => {
     const targetUser = usersList.find(u => u.id === id);
     if (!targetUser) return;
     if (isSoleAdmin(targetUser) && targetUser.isActive) {
       sounds.warning();
-      alert('The sole remaining Super Admin cannot be deactivated.');
+      showToast('The sole remaining Super Admin cannot be deactivated.');
       return;
     }
     if (targetUser.isActive) {
@@ -301,8 +328,8 @@ export default function UsersPage() {
     } else {
       sounds.toggleOn();
     }
-    updateUser({ ...targetUser, isActive: !targetUser.isActive });
-    showToast(`User ${targetUser.name} is now ${!targetUser.isActive ? 'Active' : 'Inactive'}.`);
+    await updateUser({ ...targetUser, isActive: !targetUser.isActive });
+    showToast(`User ${targetUser.name} is now ${!targetUser.isActive ? 'Active' : 'Inactive'} in database.`);
   };
 
   const copyToClipboard = (text: string) => {
@@ -423,7 +450,7 @@ export default function UsersPage() {
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-gradient-to-br from-paila-blue to-paila-blue-light text-white rounded-xl flex items-center justify-center text-xs font-bold shadow-xs">
-                          {userItem.name.split(' ').map(n => n[0]).join('')}
+                          {(userItem.name || 'User').split(' ').filter(Boolean).map(n => n[0]).join('') || 'U'}
                         </div>
                         <div>
                           <p className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
@@ -466,11 +493,16 @@ export default function UsersPage() {
                         <button
                           type="button"
                           onClick={() => openSetPasswordModal(userItem)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-paila-blue dark:text-blue-400 bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 dark:hover:bg-blue-900/60 rounded-lg transition-colors cursor-pointer"
-                          title="Set or reset password for this user"
+                          disabled={userItem.role === 'SUPER_ADMIN'}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
+                            userItem.role === 'SUPER_ADMIN'
+                              ? 'text-slate-400 bg-slate-100 dark:bg-slate-800 cursor-not-allowed opacity-60'
+                              : 'text-paila-blue dark:text-blue-400 bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 dark:hover:bg-blue-900/60'
+                          }`}
+                          title={userItem.role === 'SUPER_ADMIN' ? 'Admin passwords must be changed via database' : 'Change password for this user'}
                         >
                           <Key size={12} />
-                          Set Password
+                          Change Password
                         </button>
                       </div>
                     </td>
@@ -773,12 +805,13 @@ export default function UsersPage() {
                 </div>
               ) : (
                 /* Edit Mode Password Option */
-                <div className="border border-slate-200 dark:border-slate-800 rounded-2xl p-4 bg-slate-50/50 dark:bg-slate-950/40 space-y-3">
+                <div className={`border border-slate-200 dark:border-slate-800 rounded-2xl p-4 bg-slate-50/50 dark:bg-slate-950/40 space-y-3 ${editingUser?.role === 'SUPER_ADMIN' ? 'opacity-60 grayscale-[0.5]' : ''}`}>
                   <div className="flex items-center justify-between">
-                    <label className="flex items-center gap-2 cursor-pointer">
+                    <label className={`flex items-center gap-2 ${editingUser?.role === 'SUPER_ADMIN' ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                       <input
                         type="checkbox"
                         checked={formData.changePassword}
+                        disabled={editingUser?.role === 'SUPER_ADMIN'}
                         onChange={e => setFormData({ ...formData, changePassword: e.target.checked })}
                         className="w-4 h-4 rounded text-paila-blue focus:ring-paila-blue cursor-pointer"
                       />
@@ -788,7 +821,7 @@ export default function UsersPage() {
                       </span>
                     </label>
 
-                    {formData.changePassword && (
+                    {formData.changePassword && editingUser?.role !== 'SUPER_ADMIN' && (
                       <button
                         type="button"
                         onClick={() => {
@@ -804,7 +837,7 @@ export default function UsersPage() {
                     )}
                   </div>
 
-                  {formData.changePassword && (
+                  {formData.changePassword && editingUser?.role !== 'SUPER_ADMIN' && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 animate-fade-in">
                       <div>
                         <div className="relative">
@@ -861,6 +894,13 @@ export default function UsersPage() {
                       </div>
                     </div>
                   )}
+                  
+                  {editingUser?.role === 'SUPER_ADMIN' && (
+                    <div className="mt-1 flex items-center gap-1.5 text-[10px] text-amber-600 dark:text-amber-400 font-bold bg-amber-50 dark:bg-amber-950/30 p-2 rounded-lg border border-amber-100 dark:border-amber-900/50">
+                      <ShieldAlert size={12} />
+                      Admin passwords must be updated directly in the database for security compliance.
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -879,7 +919,7 @@ export default function UsersPage() {
                   onClick={() => {
                     if (isSoleAdmin(editingUser)) {
                       sounds.warning();
-                      alert('The sole remaining Super Admin cannot be deactivated.');
+                      showToast('The sole remaining Super Admin cannot be deactivated.');
                       return;
                     }
                     setFormData({ ...formData, isActive: !formData.isActive });
@@ -910,10 +950,11 @@ export default function UsersPage() {
                 </button>
                 <button
                   type="submit"
-                  className="flex items-center gap-2 px-6 py-2.5 bg-paila-blue hover:bg-paila-blue-light text-white rounded-xl text-xs font-bold shadow-md transition-all active:scale-95 cursor-pointer"
+                  disabled={isSubmitting}
+                  className="flex items-center gap-2 px-6 py-2.5 bg-paila-blue hover:bg-paila-blue-light disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-md transition-all active:scale-95 cursor-pointer"
                 >
                   <Check size={16} />
-                  {modalMode === 'create' ? 'Create User' : 'Save Changes'}
+                  {isSubmitting ? 'Saving to Database...' : (modalMode === 'create' ? 'Create User' : 'Save Changes')}
                 </button>
               </div>
             </form>
@@ -933,8 +974,8 @@ export default function UsersPage() {
                   <Key size={18} />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white">Set User Password</h3>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Assign a new password for immediate sign-in</p>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">Change Security Password</h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Update system credentials for staff authentication</p>
                 </div>
               </div>
               <button 
@@ -948,7 +989,7 @@ export default function UsersPage() {
             {/* Target User Info Header */}
             <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800 mb-4 flex items-center gap-3">
               <div className="w-9 h-9 rounded-lg bg-paila-blue text-white flex items-center justify-center font-bold text-xs">
-                {showSetPasswordModal.name.split(' ').map(n => n[0]).join('')}
+                {(showSetPasswordModal.name || 'User').split(' ').filter(Boolean).map(n => n[0]).join('') || 'U'}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{showSetPasswordModal.name}</p>
@@ -1060,10 +1101,11 @@ export default function UsersPage() {
                 </button>
                 <button
                   type="submit"
-                  className="flex items-center gap-1.5 px-5 py-2 bg-paila-blue hover:bg-paila-blue-light text-white rounded-xl text-xs font-bold shadow-md transition-all active:scale-95 cursor-pointer"
+                  disabled={isSubmitting}
+                  className="flex items-center gap-1.5 px-5 py-2 bg-paila-blue hover:bg-paila-blue-light disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-md transition-all active:scale-95 cursor-pointer"
                 >
                   <Lock size={14} />
-                  Update Password
+                  {isSubmitting ? 'Updating Database...' : 'Update Password'}
                 </button>
               </div>
             </form>

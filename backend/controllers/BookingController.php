@@ -349,6 +349,54 @@ class BookingController {
                 ':source' => $user['role'] === 'TOUR_OPERATOR' ? 'FIELD_APP' : 'ADMIN_PORTAL'
             ]);
 
+            // If booking moves to CONFIRMED, ensure default operational allocations exist
+            if ($newStatus === 'CONFIRMED') {
+                $checkAlloc = $pdo->prepare('SELECT COUNT(*) as cnt FROM operation_allocations WHERE booking_id = :bid');
+                $checkAlloc->execute([':bid' => $id]);
+                $allocCount = (int)$checkAlloc->fetch()['cnt'];
+
+                if ($allocCount === 0) {
+                    $bStmt = $pdo->prepare('SELECT total_agreed_amount, start_date FROM bookings WHERE id = :id');
+                    $bStmt->execute([':id' => $id]);
+                    $bRow = $bStmt->fetch();
+                    $totalAgreed = (float)($bRow['total_agreed_amount'] ?? 100000);
+                    $serviceDate = $bRow['start_date'] ?? date('Y-m-d');
+
+                    $hotelVendor = $pdo->query("SELECT id, name FROM vendors WHERE category = 'HOTEL' AND is_active = 1 LIMIT 1")->fetch();
+                    $vehicleVendor = $pdo->query("SELECT id, name FROM vendors WHERE category = 'VEHICLE' AND is_active = 1 LIMIT 1")->fetch();
+
+                    $insertAlloc = $pdo->prepare('INSERT INTO operation_allocations (
+                        booking_id, booking_code, vendor_id, vendor_name, service_type, service_date, agreed_cost, amount_paid, payment_status, field_updated_by_operator, special_notes
+                    ) VALUES (:bid, :bcode, :vid, :vname, :stype, :sdate, :cost, 0, "PENDING", 0, :notes)');
+
+                    if ($hotelVendor) {
+                        $insertAlloc->execute([
+                            ':bid' => $id,
+                            ':bcode' => $current['booking_code'],
+                            ':vid' => $hotelVendor['id'],
+                            ':vname' => $hotelVendor['name'],
+                            ':stype' => 'HOTEL',
+                            ':sdate' => $serviceDate,
+                            ':cost' => round($totalAgreed * 0.35, 2),
+                            ':notes' => 'Auto-allocated on booking confirmation'
+                        ]);
+                    }
+
+                    if ($vehicleVendor) {
+                        $insertAlloc->execute([
+                            ':bid' => $id,
+                            ':bcode' => $current['booking_code'],
+                            ':vid' => $vehicleVendor['id'],
+                            ':vname' => $vehicleVendor['name'],
+                            ':stype' => 'VEHICLE',
+                            ':sdate' => $serviceDate,
+                            ':cost' => round($totalAgreed * 0.20, 2),
+                            ':notes' => 'Transport allocation auto-generated'
+                        ]);
+                    }
+                }
+            }
+
             echo json_encode(['success' => true, 'bookingCode' => $current['booking_code'], 'status' => $newStatus]);
         });
     }

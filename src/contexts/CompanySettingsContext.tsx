@@ -54,10 +54,11 @@ export function CompanySettingsProvider({ children }: { children: ReactNode }) {
   // Sync settings with MySQL database via API
   useEffect(() => {
     apiClient.settings.get().then(dbSettings => {
-      if (dbSettings) {
+      if (dbSettings && dbSettings.companyName) {
         setSettings(prev => ({
           ...prev,
-          ...dbSettings
+          ...dbSettings,
+          companyName: dbSettings.companyName || prev.companyName || defaultCompanySettings.companyName,
         }));
       }
     }).catch(err => {
@@ -85,7 +86,7 @@ export function CompanySettingsProvider({ children }: { children: ReactNode }) {
   };
 
   const getCleanDomain = () => {
-    return settings.domain.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+    return (settings?.domain || 'pailanepal.com').replace(/^https?:\/\//i, '').replace(/\/+$/, '');
   };
 
   return (

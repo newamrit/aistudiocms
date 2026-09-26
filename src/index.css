@@ -564,6 +564,19 @@ html.dark body {
 }
 
 /* Cloud drift animations */
+@keyframes sync-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+
+.animate-sync-shimmer {
+  animation: sync-shimmer 1.8s ease-in-out infinite;
+}
+
 @keyframes cloud-drift {
   0% {
     transform: translateX(0);
@@ -661,6 +674,17 @@ html.dark body {
   .avoid-break {
     break-inside: avoid !important;
     page-break-inside: avoid !important;
+  }
+
+  /* Fix for printing containers with overflow */
+  .overflow-y-auto, 
+  .overflow-auto,
+  main,
+  #root,
+  .flex-1 {
+    overflow: visible !important;
+    height: auto !important;
+    position: static !important;
   }
 
   /* Ensure sharp borders and clear contrast in print */

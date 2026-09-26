@@ -20,8 +20,13 @@ interface DocumentViewerProps {
 
 export default function DocumentViewer({ booking, documentType, onClose }: DocumentViewerProps) {
   const { packages } = usePackages();
+  if (!booking) {
+    return null;
+  }
   const pkg = booking.packageId ? packages.find(p => p.id === booking.packageId) ?? undefined : undefined;
-  const balanceDue = booking.totalAgreedAmount - booking.advanceReceived;
+  const safeTotal = Number.isFinite(Number(booking.totalAgreedAmount)) ? Number(booking.totalAgreedAmount) : 0;
+  const safeAdvance = Number.isFinite(Number(booking.advanceReceived)) ? Number(booking.advanceReceived) : 0;
+  const balanceDue = safeTotal - safeAdvance;
 
   const handlePrint = () => window.print();
 
@@ -81,7 +86,7 @@ export default function DocumentViewer({ booking, documentType, onClose }: Docum
 /* =================== LETTERHEAD =================== */
 function LetterHead() {
   const { settings } = useCompanySettings();
-  const initials = settings.companyName
+  const initials = (settings?.companyName || 'Paila Nepal')
     .split(' ')
     .filter(Boolean)
     .slice(0, 2)
@@ -117,7 +122,8 @@ function LetterHead() {
 /* =================== PROPOSAL & QUOTE =================== */
 function ProposalDocument({ booking, pkg }: { booking: Booking; pkg: Package | undefined }) {
   const { settings } = useCompanySettings();
-  const perPaxPrice = (booking.paxCount > 0 && Number.isFinite(booking.totalAgreedAmount)) ? Math.round(Number(booking.totalAgreedAmount) / Number(booking.paxCount)) : 0;
+  const safeTotal = Number.isFinite(Number(booking.totalAgreedAmount)) ? Number(booking.totalAgreedAmount) : 0;
+  const perPaxPrice = (booking.paxCount > 0 && Number.isFinite(safeTotal)) ? Math.round(safeTotal / Number(booking.paxCount)) : 0;
 
   return (
     <div className="p-10 text-slate-800" style={{ fontFamily: 'Inter, sans-serif' }}>
@@ -216,13 +222,13 @@ function ProposalDocument({ booking, pkg }: { booking: Booking; pkg: Package | u
               <td className="px-3 py-2">{pkg?.title || 'Custom Tour Package'}</td>
               <td className="text-center px-3 py-2">{booking.paxCount} pax</td>
               <td className="text-right px-3 py-2">{perPaxPrice.toLocaleString()}</td>
-              <td className="text-right px-3 py-2 font-semibold">{booking.totalAgreedAmount.toLocaleString()}</td>
+              <td className="text-right px-3 py-2 font-semibold">{safeTotal.toLocaleString()}</td>
             </tr>
           </tbody>
           <tfoot>
             <tr className="bg-paila-blue text-white font-bold">
               <td colSpan={3} className="px-3 py-2 text-right">Grand Total</td>
-              <td className="text-right px-3 py-2">NPR {booking.totalAgreedAmount.toLocaleString()}</td>
+              <td className="text-right px-3 py-2">NPR {safeTotal.toLocaleString()}</td>
             </tr>
           </tfoot>
         </table>
@@ -424,8 +430,12 @@ function VoucherDocument({ booking, pkg }: { booking: Booking; pkg: Package | un
 function InvoiceDocument({ booking, pkg, balanceDue }: { booking: Booking; pkg: Package | undefined; balanceDue: number }) {
   const { settings } = useCompanySettings();
   const vatRate = 0.13;
-  const subtotal = Math.round(booking.totalAgreedAmount / (1 + vatRate));
-  const vatAmount = booking.totalAgreedAmount - subtotal;
+  const safeTotal = Number.isFinite(Number(booking.totalAgreedAmount)) ? Number(booking.totalAgreedAmount) : 0;
+  const safeAdvance = Number.isFinite(Number(booking.advanceReceived)) ? Number(booking.advanceReceived) : 0;
+  const safeBalanceDue = Number.isFinite(Number(balanceDue)) ? Number(balanceDue) : (safeTotal - safeAdvance);
+  const subtotal = Math.round(safeTotal / (1 + vatRate));
+  const vatAmount = safeTotal - subtotal;
+  const perPaxRate = (booking.paxCount > 0 && Number.isFinite(safeTotal)) ? Math.round(safeTotal / Number(booking.paxCount)) : 0;
 
   return (
     <div className="p-10 text-slate-800" style={{ fontFamily: 'Inter, sans-serif' }}>
@@ -488,7 +498,7 @@ function InvoiceDocument({ booking, pkg, balanceDue }: { booking: Booking; pkg: 
           </div>
           <div>
             <p className="text-[10px] text-blue-600 uppercase font-semibold">Pax</p>
-            <p className="font-bold text-slate-900">{booking.paxCount} persons</p>
+            <p className="font-bold text-slate-900">{booking.paxCount || 1} persons</p>
           </div>
         </div>
       </div>
@@ -512,9 +522,9 @@ function InvoiceDocument({ booking, pkg, balanceDue }: { booking: Booking; pkg: 
                 <p className="font-semibold">{pkg?.title || 'Custom Tour Package'}</p>
                 <p className="text-[10px] text-slate-500">{booking.paxCount} pax × {booking.itineraryDays.length || pkg?.durationDays || 0} days</p>
               </td>
-              <td className="text-center px-3 py-2.5">{booking.paxCount}</td>
-              <td className="text-right px-3 py-2.5">{Math.round(booking.totalAgreedAmount / booking.paxCount).toLocaleString()}</td>
-              <td className="text-right px-3 py-2.5 font-semibold">{booking.totalAgreedAmount.toLocaleString()}</td>
+              <td className="text-center px-3 py-2.5">{Number.isFinite(Number(booking.paxCount)) ? booking.paxCount : 1}</td>
+              <td className="text-right px-3 py-2.5">{perPaxRate.toLocaleString()}</td>
+              <td className="text-right px-3 py-2.5 font-semibold">{safeTotal.toLocaleString()}</td>
             </tr>
           </tbody>
         </table>
@@ -533,15 +543,15 @@ function InvoiceDocument({ booking, pkg, balanceDue }: { booking: Booking; pkg: 
           </div>
           <div className="flex justify-between py-2 text-sm bg-paila-blue text-white font-bold px-3 rounded-t">
             <span>Grand Total (Incl. VAT)</span>
-            <span>NPR {booking.totalAgreedAmount.toLocaleString()}</span>
+            <span>NPR {safeTotal.toLocaleString()}</span>
           </div>
           <div className="flex justify-between py-1.5 text-sm bg-green-100 text-green-800 px-3 border-b border-green-200">
             <span>Less: Advance Received</span>
-            <span className="font-semibold">- NPR {booking.advanceReceived.toLocaleString()}</span>
+            <span className="font-semibold">- NPR {safeAdvance.toLocaleString()}</span>
           </div>
           <div className="flex justify-between py-2.5 text-sm bg-paila-orange text-white font-bold px-3 rounded-b">
             <span>BALANCE DUE</span>
-            <span>NPR {balanceDue.toLocaleString()}</span>
+            <span>NPR {safeBalanceDue.toLocaleString()}</span>
           </div>
         </div>
       </div>
@@ -562,7 +572,7 @@ function InvoiceDocument({ booking, pkg, balanceDue }: { booking: Booking; pkg: 
             <tr className="border-b border-slate-100">
               <td className="px-3 py-2">Advance Payment (Booking Confirmation)</td>
               <td className="px-3 py-2">On booking</td>
-              <td className="text-right px-3 py-2 font-semibold">{booking.advanceReceived.toLocaleString()}</td>
+              <td className="text-right px-3 py-2 font-semibold">{safeAdvance.toLocaleString()}</td>
               <td className="text-center px-3 py-2">
                 <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-[10px] font-semibold">RECEIVED</span>
               </td>
@@ -570,7 +580,7 @@ function InvoiceDocument({ booking, pkg, balanceDue }: { booking: Booking; pkg: 
             <tr className="border-b border-slate-100">
               <td className="px-3 py-2">Balance Payment</td>
               <td className="px-3 py-2">7 days before departure</td>
-              <td className="text-right px-3 py-2 font-semibold">{balanceDue.toLocaleString()}</td>
+              <td className="text-right px-3 py-2 font-semibold">{safeBalanceDue.toLocaleString()}</td>
               <td className="text-center px-3 py-2">
                 <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-semibold">PENDING</span>
               </td>
@@ -641,6 +651,11 @@ function ItineraryStatusSummaryDocument({
 }) {
   const { settings } = useCompanySettings();
   const { allocations: allAllocations } = useOperations();
+  const safeTotal = Number.isFinite(Number(booking.totalAgreedAmount)) ? Number(booking.totalAgreedAmount) : 0;
+  const safeAdvance = Number.isFinite(Number(booking.advanceReceived)) ? Number(booking.advanceReceived) : 0;
+  const safeBalanceDue = Number.isFinite(Number(balanceDue)) ? Number(balanceDue) : Math.max(0, safeTotal - safeAdvance);
+  const perPaxRate = (booking.paxCount > 0 && Number.isFinite(safeTotal)) ? Math.round(safeTotal / Number(booking.paxCount)) : 0;
+
   const days: ItineraryDay[] = booking.itineraryDays && booking.itineraryDays.length > 0 
     ? booking.itineraryDays 
     : (pkg?.itineraryDays || []);
@@ -810,28 +825,28 @@ function ItineraryStatusSummaryDocument({
             Financial & Payment Status
           </h3>
           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-            balanceDue <= 0 ? 'bg-green-100 text-green-800 border border-green-200' : 'bg-amber-100 text-amber-800 border border-amber-200'
+            safeBalanceDue <= 0 ? 'bg-green-100 text-green-800 border border-green-200' : 'bg-amber-100 text-amber-800 border border-amber-200'
           }`}>
-            {balanceDue <= 0 ? 'FULLY SETTLED' : `OUTSTANDING BALANCE: NPR ${balanceDue.toLocaleString()}`}
+            {safeBalanceDue <= 0 ? 'FULLY SETTLED' : `OUTSTANDING BALANCE: NPR ${safeBalanceDue.toLocaleString()}`}
           </span>
         </div>
         <div className="grid grid-cols-4 gap-3 text-xs pt-1">
           <div className="bg-white p-2.5 rounded-lg border border-blue-100">
             <p className="text-[10px] text-slate-500 uppercase">Total Contract Sum</p>
-            <p className="font-bold text-slate-900 text-sm font-mono mt-0.5">NPR {booking.totalAgreedAmount.toLocaleString()}</p>
+            <p className="font-bold text-slate-900 text-sm font-mono mt-0.5">NPR {safeTotal.toLocaleString()}</p>
           </div>
           <div className="bg-white p-2.5 rounded-lg border border-blue-100">
             <p className="text-[10px] text-slate-500 uppercase">Advance Collected</p>
-            <p className="font-bold text-emerald-600 text-sm font-mono mt-0.5">NPR {booking.advanceReceived.toLocaleString()}</p>
+            <p className="font-bold text-emerald-600 text-sm font-mono mt-0.5">NPR {safeAdvance.toLocaleString()}</p>
           </div>
           <div className="bg-white p-2.5 rounded-lg border border-blue-100">
             <p className="text-[10px] text-slate-500 uppercase">Balance Receivable</p>
-            <p className="font-bold text-paila-orange text-sm font-mono mt-0.5">NPR {balanceDue.toLocaleString()}</p>
+            <p className="font-bold text-paila-orange text-sm font-mono mt-0.5">NPR {safeBalanceDue.toLocaleString()}</p>
           </div>
           <div className="bg-white p-2.5 rounded-lg border border-blue-100">
             <p className="text-[10px] text-slate-500 uppercase">Rate Per Person</p>
             <p className="font-bold text-slate-800 text-sm font-mono mt-0.5">
-              NPR {booking.paxCount > 0 ? Math.round(booking.totalAgreedAmount / booking.paxCount).toLocaleString() : 0}
+              NPR {perPaxRate.toLocaleString()}
             </p>
           </div>
         </div>
