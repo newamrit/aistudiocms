@@ -419,7 +419,7 @@ export const SyncManager = {
       try {
         await SyncQueue.updateStatus(action.id, 'SYNCING');
 
-        const token = localStorage.getItem('auth_token');
+        const token = localStorage.getItem('auth_token') || localStorage.getItem('paila_auth_token');
         const response = await fetch(action.endpoint, {
           method: action.method,
           headers: {

@@ -674,6 +674,31 @@ html.dark body {
   .avoid-break {
     break-inside: avoid !important;
     page-break-inside: avoid !important;
+    display: block !important;
+  }
+
+  /* Includes/Excludes specific formatting for Itinerary */
+  .itinerary-details-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 1.5rem !important;
+    page-break-before: auto !important;
+  }
+
+  .itinerary-details-block {
+    border: 1px solid #e2e8f0 !important;
+    padding: 1.25rem !important;
+    border-radius: 0.5rem !important;
+    background-color: #ffffff !important;
+    break-inside: avoid !important;
+  }
+
+  .itinerary-details-title {
+    border-bottom: 1px solid #cbd5e1 !important;
+    margin-bottom: 0.75rem !important;
+    padding-bottom: 0.5rem !important;
+    color: #012871 !important; /* Paila Blue for titles */
+    font-size: 10pt !important;
   }
 
   /* Fix for printing containers with overflow */

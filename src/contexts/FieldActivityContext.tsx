@@ -356,8 +356,61 @@ export function FieldActivityProvider({ children }: { children: ReactNode }) {
       fetchFieldActivities();
     }, 20000);
 
+    // Establish persistent WebSocket connection for real-time field activities instantly
+    let ws: WebSocket | null = null;
+    let wsReconnectTimeout: any = null;
+
+    const connectWS = () => {
+      try {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws`;
+        ws = new WebSocket(wsUrl);
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'NEW_FIELD_ACTIVITY' && data.activity) {
+              const incoming: FieldActivity = data.activity;
+              setActivities(prev => {
+                if (prev.some(a => a.id === incoming.id)) return prev;
+                return [incoming, ...prev];
+              });
+              if (user?.role !== 'TOUR_OPERATOR') {
+                sounds.notification();
+                setLatestIncomingActivity(incoming);
+              }
+            } else if (data.type === 'ACK_FIELD_ACTIVITY' && data.id) {
+              setActivities(prev => prev.map(a => a.id === Number(data.id) ? { ...a, acknowledged: true } : a));
+            }
+          } catch (err) {
+            console.warn('Error parsing FieldActivity WS message:', err);
+          }
+        };
+
+        ws.onclose = () => {
+          wsReconnectTimeout = setTimeout(connectWS, 4000);
+        };
+
+        ws.onerror = (err) => {
+          console.warn('FieldActivity WS error, closing socket:', err);
+          ws?.close();
+        };
+      } catch (err) {
+        console.warn('Failed to connect FieldActivity WS:', err);
+        wsReconnectTimeout = setTimeout(connectWS, 4000);
+      }
+    };
+
+    connectWS();
+
     return () => {
       if (channel) channel.close();
+      if (ws) {
+        ws.close();
+      }
+      if (wsReconnectTimeout) {
+        clearTimeout(wsReconnectTimeout);
+      }
       window.removeEventListener('storage', handleStorage);
       window.removeEventListener('paila_field_activity_created' as any, handleCustomActivityEvent);
       clearInterval(pollInterval);

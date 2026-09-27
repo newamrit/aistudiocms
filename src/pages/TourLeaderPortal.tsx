@@ -598,7 +598,11 @@ export default function TourLeaderPortal() {
 
       sounds.success();
       setShowDailyStatusModal(false);
-      setAlertSuccessToast(`Day ${selectedDayNumber} Update "${dailyStatusType}" recorded and synchronized with Admin Console!`);
+      if (isOffline) {
+        setAlertSuccessToast(`Day ${selectedDayNumber} Update "${dailyStatusType}" recorded locally. Will sync with Admin Console when signal restores!`);
+      } else {
+        setAlertSuccessToast(`Day ${selectedDayNumber} Update "${dailyStatusType}" recorded and synchronized with Admin Console!`);
+      }
       setTimeout(() => setAlertSuccessToast(null), 5000);
     } catch (err) {
       console.error('Failed to submit daily update:', err);
@@ -1050,7 +1054,11 @@ export default function TourLeaderPortal() {
       });
 
       setShowAlertModal(false);
-      setAlertSuccessToast(`Emergency Alert "${alertTitle.trim() || 'Emergency'}" dispatched to Operations HQ & Super Admin!`);
+      if (isOffline) {
+        setAlertSuccessToast(`Emergency Alert "${alertTitle.trim() || 'Emergency'}" recorded locally. Will dispatch to HQ when signal restores!`);
+      } else {
+        setAlertSuccessToast(`Emergency Alert "${alertTitle.trim() || 'Emergency'}" dispatched to Operations HQ & Super Admin!`);
+      }
       setTimeout(() => setAlertSuccessToast(null), 6000);
     } catch (err) {
       console.error('Failed to create alert:', err);
@@ -1677,6 +1685,29 @@ export default function TourLeaderPortal() {
                                     {act.metadata.weather}
                                   </span>
                                 )}
+                              </div>
+                            )}
+
+                            {/* HQ Acknowledgment Badge for Daily Updates */}
+                            {isCheckIn && (
+                              <div className="mt-2.5 pt-1.5 border-t border-dashed border-slate-200/60 flex items-center justify-between">
+                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-extrabold tracking-wide border ${
+                                  act.acknowledged
+                                    ? 'bg-emerald-100/90 text-emerald-800 border-emerald-200/60'
+                                    : 'bg-amber-100/90 text-amber-800 border-amber-200/60 animate-pulse'
+                                }`}>
+                                  {act.acknowledged ? (
+                                    <>
+                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                                      HQ ACKNOWLEDGED
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0 animate-ping" />
+                                      PENDING HQ REVIEW
+                                    </>
+                                  )}
+                                </span>
                               </div>
                             )}
                           </div>

@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import fs from 'fs';
+import { WebSocketServer, WebSocket } from 'ws';
 import {
   users as defaultUsers,
   packages as defaultPackages,
@@ -39,6 +40,7 @@ let companySettingsData = {
   domain: 'pailanepal.com',
   panNumber: '601234567',
   vatNumber: '301234567',
+  taxPreference: 'BOTH',
   email: 'info@pailanepal.com',
   tagline: 'Trekking • Mountaineering • Institutional Excursions',
   emergencyPhone: '+977-9801234567',
@@ -403,6 +405,21 @@ function loadDbState() {
   }
 }
 
+const connectedClients = new Set<WebSocket>();
+
+function broadcastToClients(data: any) {
+  const payload = JSON.stringify(data);
+  for (const client of connectedClients) {
+    if (client.readyState === WebSocket.OPEN) {
+      try {
+        client.send(payload);
+      } catch (err) {
+        console.warn('Failed to send message to client:', err);
+      }
+    }
+  }
+}
+
 // Persist database state to disk
 function saveDbState() {
   try {
@@ -504,6 +521,10 @@ async function startServer() {
         is_active: user.isActive ? 1 : 0
       }
     });
+  });
+
+  app.post('/api/auth/logout', (_req: Request, res: Response) => {
+    res.json({ success: true, message: 'Logged out successfully.' });
   });
 
   // ---------------------------------------------------------------------------
@@ -840,16 +861,18 @@ async function startServer() {
   // VENDORS ROUTES
   // ---------------------------------------------------------------------------
   app.get('/api/vendors', (_req: Request, res: Response) => {
-    const mapped = vendorsList.map(v => ({
+    const mapped = vendorsList.map((v: any) => ({
       id: v.id,
       name: v.name,
       category: v.category,
       location: v.location,
-      contact_person: v.contactPerson,
+      contact_person: v.contactPerson || v.contact_person || '',
       phone: v.phone,
-      pan_vat_number: v.panVatNumber,
-      bank_account_details: v.bankAccountDetails,
-      is_active: v.isActive ? 1 : 0
+      pan_vat_number: v.panVatNumber || v.pan_vat_number || '',
+      bank_account_details: v.bankAccountDetails || v.bank_account_details || '',
+      is_active: (v.isActive !== undefined ? v.isActive : v.is_active) ? 1 : 0,
+      vehicle_type: v.vehicleType || v.vehicle_type || '',
+      plate_number: v.plateNumber || v.plate_number || ''
     }));
     res.json({ data: mapped, count: mapped.length });
   });
@@ -1069,17 +1092,47 @@ async function startServer() {
   });
 
   app.post('/api/users', (req: Request, res: Response) => {
-    const u = req.body;
+    const u = req.body || {};
+    
+    // Server-side validation
+    const name = String(u.name || '').trim();
+    if (!name) {
+      return res.status(400).json({ success: false, error: 'Full Name is required and cannot be empty.' });
+    }
+
+    const email = String(u.email || '').trim().toLowerCase();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ success: false, error: 'A valid email address is required.' });
+    }
+
+    // Check email uniqueness
+    const emailExists = usersList.some(item => item.email?.toLowerCase() === email);
+    if (emailExists) {
+      return res.status(400).json({ success: false, error: 'A user with this email address already exists.' });
+    }
+
+    const password = String(u.password || '').trim();
+    if (!password || password.length < 4) {
+      return res.status(400).json({ success: false, error: 'Password is required and must be at least 4 characters long.' });
+    }
+
+    const role = String(u.role || '').trim();
+    const VALID_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATION_MANAGER', 'SALES', 'TOUR_OPERATOR'];
+    if (!VALID_ROLES.includes(role)) {
+      return res.status(400).json({ success: false, error: `Invalid role specified. Supported roles: ${VALID_ROLES.join(', ')}.` });
+    }
+
     const newId = usersList.length > 0 ? Math.max(...usersList.map(item => item.id)) + 1 : 1;
     const newUser = {
       id: newId,
-      name: u.name?.trim() || 'New User',
-      email: u.email?.trim().toLowerCase() || `user_${newId}@pailanepal.com`,
-      role: u.role || 'SALES',
-      phone: u.phone?.trim() || '',
-      password: u.password || 'password',
+      name,
+      email,
+      role: role as any,
+      phone: String(u.phone || '').trim(),
+      password,
       isActive: u.isActive !== undefined ? Boolean(u.isActive) : (u.is_active !== undefined ? Boolean(u.is_active) : true)
     };
+    
     usersList = [newUser, ...usersList.filter(item => item.id !== newId)];
     saveDbState();
     res.status(201).json({
@@ -1087,79 +1140,142 @@ async function startServer() {
       id: newId,
       user: newUser,
       verified: true,
-      message: 'User created.'
+      message: 'User created successfully.'
     });
   });
 
   app.put('/api/users/:id', (req: Request, res: Response) => {
     const id = parseInt(req.params.id, 10);
     const index = usersList.findIndex(item => item.id === id);
-    if (index !== -1) {
-      const existing = usersList[index];
-      const targetIsActive = req.body.isActive !== undefined 
-        ? Boolean(req.body.isActive) 
-        : (req.body.is_active !== undefined ? Boolean(req.body.is_active) : existing.isActive);
-      const targetPassword = req.body.password && String(req.body.password).trim() !== '' 
-        ? String(req.body.password) 
-        : (existing.password || 'password');
-      const targetEmail = req.body.email ? String(req.body.email).trim().toLowerCase() : existing.email;
-      const targetRole = req.body.role || existing.role;
-      const targetName = req.body.name ? String(req.body.name).trim() : existing.name;
-      const targetPhone = req.body.phone !== undefined ? String(req.body.phone).trim() : existing.phone;
-
-      const updatedUserRecord = {
-        ...existing,
-        id,
-        name: targetName,
-        email: targetEmail,
-        role: targetRole,
-        phone: targetPhone,
-        password: targetPassword,
-        isActive: targetIsActive,
-      };
-
-      usersList[index] = updatedUserRecord;
-      saveDbState();
-      res.json({
-        success: true,
-        verified: true,
-        user: updatedUserRecord,
-        message: `User #${id} (${targetName}) successfully updated in database with role ${targetRole}.`
-      });
-    } else {
-      res.status(404).json({ success: false, error: 'User not found' });
+    if (index === -1) {
+      return res.status(404).json({ success: false, error: 'User not found in the database.' });
     }
+
+    const existing = usersList[index];
+    const name = req.body.name !== undefined ? String(req.body.name).trim() : existing.name;
+    const email = req.body.email !== undefined ? String(req.body.email).trim().toLowerCase() : existing.email;
+    const role = req.body.role !== undefined ? String(req.body.role).trim() : existing.role;
+    const phone = req.body.phone !== undefined ? String(req.body.phone).trim() : existing.phone;
+    
+    const targetIsActive = req.body.isActive !== undefined 
+      ? Boolean(req.body.isActive) 
+      : (req.body.is_active !== undefined ? Boolean(req.body.is_active) : existing.isActive);
+      
+    const targetPassword = req.body.password && String(req.body.password).trim() !== '' 
+      ? String(req.body.password).trim() 
+      : (existing.password || 'password');
+
+    // Server-side validation
+    if (!name) {
+      return res.status(400).json({ success: false, error: 'Full Name is required and cannot be empty.' });
+    }
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ success: false, error: 'A valid email address is required.' });
+    }
+
+    // Verify email uniqueness against other users
+    const emailExists = usersList.some(item => item.id !== id && item.email?.toLowerCase() === email);
+    if (emailExists) {
+      return res.status(400).json({ success: false, error: 'This email address is already registered to another user.' });
+    }
+
+    if (!targetPassword || targetPassword.length < 4) {
+      return res.status(400).json({ success: false, error: 'Password must be at least 4 characters long.' });
+    }
+
+    const VALID_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATION_MANAGER', 'SALES', 'TOUR_OPERATOR'];
+    if (!VALID_ROLES.includes(role)) {
+      return res.status(400).json({ success: false, error: `Invalid role specified. Supported roles: ${VALID_ROLES.join(', ')}.` });
+    }
+
+    // Sole Admin Safeguard: Prevent lockouts
+    // If the original user was SUPER_ADMIN and was active, and now we are changing role to a non-SUPER_ADMIN or deactivating them
+    const originalWasActiveAdmin = existing.role === 'SUPER_ADMIN' && existing.isActive;
+    const targetIsActiveAdmin = role === 'SUPER_ADMIN' && targetIsActive;
+    
+    if (originalWasActiveAdmin && !targetIsActiveAdmin) {
+      // Find other active SUPER_ADMINS
+      const otherActiveAdmins = usersList.filter(item => item.id !== id && item.role === 'SUPER_ADMIN' && item.isActive);
+      if (otherActiveAdmins.length === 0) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'This action is rejected. You are the sole active Super Admin on this system; changing your role or deactivating this account would lock everyone out.' 
+        });
+      }
+    }
+
+    const updatedUserRecord = {
+      ...existing,
+      id,
+      name,
+      email,
+      role: role as any,
+      phone,
+      password: targetPassword,
+      isActive: targetIsActive,
+    };
+
+    usersList[index] = updatedUserRecord;
+    saveDbState();
+    res.json({
+      success: true,
+      verified: true,
+      user: updatedUserRecord,
+      message: `User #${id} (${name}) successfully updated in database.`
+    });
   });
 
   app.delete('/api/users/:id', (req: Request, res: Response) => {
     const id = parseInt(req.params.id, 10);
+    const targetUser = usersList.find(item => item.id === id);
+    if (!targetUser) {
+      return res.status(404).json({ success: false, error: 'User not found in the database.' });
+    }
+
+    // Sole Admin Safeguard
+    if (targetUser.role === 'SUPER_ADMIN' && targetUser.isActive) {
+      const otherActiveAdmins = usersList.filter(item => item.id !== id && item.role === 'SUPER_ADMIN' && item.isActive);
+      if (otherActiveAdmins.length === 0) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'This action is rejected. This user is the sole active Super Admin; deleting this account would lock everyone out.' 
+        });
+      }
+    }
+
     usersList = usersList.filter(item => item.id !== id);
     saveDbState();
-    res.json({ success: true, verified: true, message: 'User deleted.' });
+    res.json({ success: true, verified: true, message: 'User deleted successfully.' });
   });
 
   app.post('/api/users/:id/password', (req: Request, res: Response) => {
     const id = parseInt(req.params.id, 10);
     const { password } = req.body;
     const user = usersList.find(item => item.id === id);
-    if (user && password) {
-      user.password = String(password);
-      saveDbState();
-      res.json({
-        success: true,
-        verified: true,
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          password: user.password
-        },
-        message: 'Password updated and verified in database.'
-      });
-    } else {
-      res.status(404).json({ success: false, error: 'User or password invalid' });
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found.' });
     }
+    const cleanPassword = String(password || '').trim();
+    if (!cleanPassword || cleanPassword.length < 4) {
+      return res.status(400).json({ success: false, error: 'Password must be at least 4 characters long.' });
+    }
+
+    user.password = cleanPassword;
+    saveDbState();
+    res.json({
+      success: true,
+      verified: true,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        phone: user.phone || '',
+        isActive: user.isActive
+      },
+      message: 'Password successfully changed.'
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -1221,6 +1337,8 @@ async function startServer() {
         pan_number: s.panNumber || s.pan_number || '601234567',
         vatNumber: s.vatNumber || s.vat_number || '301234567',
         vat_number: s.vatNumber || s.vat_number || '301234567',
+        taxPreference: s.taxPreference || s.tax_preference || 'BOTH',
+        tax_preference: s.taxPreference || s.tax_preference || 'BOTH',
         registrationNumber: s.registrationNumber || s.registration_number || '129481/070/071',
         registration_number: s.registrationNumber || s.registration_number || '129481/070/071',
       }
@@ -1258,6 +1376,7 @@ async function startServer() {
     };
     alertsList.unshift(newAlert);
     saveDbState();
+    broadcastToClients({ type: 'NEW_ALERT', alert: newAlert });
     res.status(201).json({ success: true, id: newId, alert: newAlert });
   });
 
@@ -1312,6 +1431,7 @@ async function startServer() {
     };
     fieldActivitiesList.unshift(newFieldActivity);
     saveDbState();
+    broadcastToClients({ type: 'NEW_FIELD_ACTIVITY', activity: newFieldActivity });
     res.status(201).json({ success: true, id: newId, activity: newFieldActivity });
   });
 
@@ -1321,6 +1441,7 @@ async function startServer() {
     if (act) {
       act.acknowledged = true;
       saveDbState();
+      broadcastToClients({ type: 'ACK_FIELD_ACTIVITY', id });
     }
     res.json({ success: true });
   });
@@ -1426,8 +1547,33 @@ if (typeof customElements !== 'undefined' && !customElements.get('vite-error-ove
     app.use(vite.middlewares);
   }
 
-  app.listen(Number(PORT), '0.0.0.0', () => {
+  const server = app.listen(Number(PORT), '0.0.0.0', () => {
     console.log(`Paila Nepal TravelCMS Full-Stack server running on port ${PORT}`);
+  });
+
+  const wss = new WebSocketServer({ noServer: true });
+
+  server.on('upgrade', (request, socket, head) => {
+    const pathname = new URL(request.url || '', `http://${request.headers.host}`).pathname;
+    if (pathname === '/ws') {
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+      });
+    } else {
+      socket.destroy();
+    }
+  });
+
+  wss.on('connection', (ws) => {
+    connectedClients.add(ws);
+    
+    ws.on('close', () => {
+      connectedClients.delete(ws);
+    });
+
+    ws.on('error', () => {
+      connectedClients.delete(ws);
+    });
   });
 }
 

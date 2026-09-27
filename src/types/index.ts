@@ -14,6 +14,13 @@ export interface User {
 export type BookingStatus = 'PROPOSED' | 'CONFIRMED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 export type ClientType = 'INSTITUTIONAL' | 'CORPORATE' | 'INDIVIDUAL' | 'FOREIGN_TREK';
 
+export interface HighlightItem {
+  id: string;
+  title: string;
+  description?: string;
+  icon?: string;
+}
+
 export interface Package {
   id: number;
   title: string;
@@ -25,6 +32,7 @@ export interface Package {
   inclusions: string;
   exclusions: string;
   category: string;
+  highlights?: HighlightItem[];
   itineraryDays?: ItineraryDay[];
 }
 
@@ -193,6 +201,8 @@ export interface CompanySettings {
   domain: string;
   panNumber: string;
   vatNumber: string;
+  logoUrl?: string;
+  taxPreference?: 'PAN' | 'VAT' | 'BOTH';
   email?: string;
   tagline?: string;
   emergencyPhone?: string;

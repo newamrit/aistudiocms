@@ -93,9 +93,17 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
       <div className="p-4 border-b border-white/10">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 flex-1">
-            <div className="w-10 h-10 bg-gradient-to-br from-[#f35500] to-[#d94b00] rounded-xl flex items-center justify-center font-bold text-sm shrink-0 shadow-lg shadow-orange-500/20">
-              {brandInitials}
-            </div>
+            {settings?.logoUrl ? (
+              <img 
+                src={settings.logoUrl} 
+                alt="Logo" 
+                className="w-10 h-10 object-contain rounded-xl bg-white border border-white/10 p-0.5 shrink-0"
+              />
+            ) : (
+              <div className="w-10 h-10 bg-gradient-to-br from-[#f35500] to-[#d94b00] rounded-xl flex items-center justify-center font-bold text-sm shrink-0 shadow-lg shadow-orange-500/20">
+                {brandInitials}
+              </div>
+            )}
             {!collapsed && (
               <div className="animate-slide-in overflow-hidden">
                 <h1 className="font-bold text-sm leading-tight truncate">{settings.companyName}</h1>

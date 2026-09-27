@@ -285,9 +285,60 @@ export function AlertProvider({ children }: { children: ReactNode }) {
       fetchAlerts(false);
     }, 20000);
 
+    // Establish persistent WebSocket connection for real-time alerts instantly
+    let ws: WebSocket | null = null;
+    let wsReconnectTimeout: any = null;
+
+    const connectWS = () => {
+      try {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws`;
+        ws = new WebSocket(wsUrl);
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'NEW_ALERT' && data.alert) {
+              const newAlert: Alert = data.alert;
+              setAlerts(prev => {
+                if (prev.some(a => a.id === newAlert.id)) return prev;
+                return [newAlert, ...prev];
+              });
+              if (user?.role !== 'TOUR_OPERATOR') {
+                sounds.warning();
+                setLatestIncomingAlert(newAlert);
+              }
+            }
+          } catch (err) {
+            console.warn('Error parsing Alert WS message:', err);
+          }
+        };
+
+        ws.onclose = () => {
+          wsReconnectTimeout = setTimeout(connectWS, 4000);
+        };
+
+        ws.onerror = (err) => {
+          console.warn('Alert WS error, closing socket:', err);
+          ws?.close();
+        };
+      } catch (err) {
+        console.warn('Failed to connect Alert WS:', err);
+        wsReconnectTimeout = setTimeout(connectWS, 4000);
+      }
+    };
+
+    connectWS();
+
     return () => {
       if (channel) {
         channel.close();
+      }
+      if (ws) {
+        ws.close();
+      }
+      if (wsReconnectTimeout) {
+        clearTimeout(wsReconnectTimeout);
       }
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('paila_alert_created' as any, handleCustomEvent);

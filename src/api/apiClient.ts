@@ -182,7 +182,9 @@ function mapSqlVendor(row: any): Vendor {
     phone: row.phone || '',
     panVatNumber: row.pan_vat_number || '',
     bankAccountDetails: row.bank_account_details || '',
-    isActive: Boolean(row.is_active)
+    isActive: row.is_active !== undefined ? Boolean(row.is_active) : true,
+    vehicleType: row.vehicle_type || undefined,
+    plateNumber: row.plate_number || undefined
   };
 }
 
@@ -1066,6 +1068,7 @@ export const apiClient = {
             email: db.email || 'info@pailanepal.com',
             panNumber: db.panNumber || db.pan_number || '601234567',
             vatNumber: db.vatNumber || db.vat_number || '301234567',
+            taxPreference: db.taxPreference || db.tax_preference || 'BOTH',
             registrationNumber: db.registrationNumber || db.registration_number || '129481/070/071',
             currency: db.currency || 'NPR',
             taxRate: Number(db.taxRate || db.tax_rate) || 13,
@@ -1098,6 +1101,7 @@ export const apiClient = {
             email: settings.email,
             pan_number: settings.panNumber,
             vat_number: settings.vatNumber,
+            tax_preference: settings.taxPreference,
             registration_number: settings.registrationNumber,
             currency: settings.currency,
             tax_rate: settings.taxRate,
@@ -1162,7 +1166,13 @@ export const apiClient = {
         });
         if (res?.id) createdId = res.id;
       } catch (err) {
-        console.warn('Alert DB creation failed, saving to cache:', err);
+        console.warn('Alert DB creation failed, saving to cache and enqueuing offline sync:', err);
+        try {
+          const { SyncQueue } = await import('../utils/offlineDB');
+          await SyncQueue.add('/api/alerts', 'POST', alert);
+        } catch (queueErr) {
+          console.warn('Failed to queue offline alert sync:', queueErr);
+        }
       }
 
       const newAlert: Alert = {
@@ -1273,7 +1283,13 @@ export const apiClient = {
           createdActivity.id = res.id;
         }
       } catch (err) {
-        console.warn('Field activity DB save failed, saving to cache:', err);
+        console.warn('Field activity DB save failed, saving to cache and enqueuing offline sync:', err);
+        try {
+          const { SyncQueue } = await import('../utils/offlineDB');
+          await SyncQueue.add('/api/field-activities', 'POST', activity);
+        } catch (queueErr) {
+          console.warn('Failed to queue offline field activity sync:', queueErr);
+        }
       }
 
       const list = readCache<any>(DB_KEYS.FIELD_ACTIVITIES);

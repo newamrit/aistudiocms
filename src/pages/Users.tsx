@@ -255,7 +255,9 @@ export default function UsersPage() {
       setEditingUser(null);
     } catch (err) {
       console.error('Error saving user to database:', err);
-      showToast('Warning: user was updated locally, but database sync encountered an error.');
+      const errMsg = err instanceof Error ? err.message : 'Database sync encountered an error.';
+      sounds.error();
+      showToast(`Error: ${errMsg}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -290,7 +292,9 @@ export default function UsersPage() {
       setShowSetPasswordModal(null);
     } catch (err) {
       console.error('Error updating password:', err);
-      showToast('Warning: password updated locally.');
+      const errMsg = err instanceof Error ? err.message : 'Failed to update user password.';
+      sounds.error();
+      showToast(`Error: ${errMsg}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -310,6 +314,9 @@ export default function UsersPage() {
       showToast(`User "${targetUser?.name}" deleted from database.`);
     } catch (err) {
       console.error('Error deleting user:', err);
+      const errMsg = err instanceof Error ? err.message : 'Database sync encountered an error during deletion.';
+      sounds.error();
+      showToast(`Error: ${errMsg}`);
     } finally {
       setShowDeleteConfirm(null);
     }
@@ -323,13 +330,21 @@ export default function UsersPage() {
       showToast('The sole remaining Super Admin cannot be deactivated.');
       return;
     }
-    if (targetUser.isActive) {
-      sounds.toggleOff();
-    } else {
-      sounds.toggleOn();
+    
+    try {
+      if (targetUser.isActive) {
+        sounds.toggleOff();
+      } else {
+        sounds.toggleOn();
+      }
+      await updateUser({ ...targetUser, isActive: !targetUser.isActive });
+      showToast(`User ${targetUser.name} is now ${!targetUser.isActive ? 'Active' : 'Inactive'} in database.`);
+    } catch (err) {
+      console.error('Error toggling user status:', err);
+      const errMsg = err instanceof Error ? err.message : 'Failed to toggle user status.';
+      sounds.error();
+      showToast(`Error: ${errMsg}`);
     }
-    await updateUser({ ...targetUser, isActive: !targetUser.isActive });
-    showToast(`User ${targetUser.name} is now ${!targetUser.isActive ? 'Active' : 'Inactive'} in database.`);
   };
 
   const copyToClipboard = (text: string) => {
@@ -493,13 +508,8 @@ export default function UsersPage() {
                         <button
                           type="button"
                           onClick={() => openSetPasswordModal(userItem)}
-                          disabled={userItem.role === 'SUPER_ADMIN'}
-                          className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
-                            userItem.role === 'SUPER_ADMIN'
-                              ? 'text-slate-400 bg-slate-100 dark:bg-slate-800 cursor-not-allowed opacity-60'
-                              : 'text-paila-blue dark:text-blue-400 bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 dark:hover:bg-blue-900/60'
-                          }`}
-                          title={userItem.role === 'SUPER_ADMIN' ? 'Admin passwords must be changed via database' : 'Change password for this user'}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg transition-colors cursor-pointer text-paila-blue dark:text-blue-400 bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 dark:hover:bg-blue-900/60"
+                          title="Change password for this user"
                         >
                           <Key size={12} />
                           Change Password
@@ -805,13 +815,12 @@ export default function UsersPage() {
                 </div>
               ) : (
                 /* Edit Mode Password Option */
-                <div className={`border border-slate-200 dark:border-slate-800 rounded-2xl p-4 bg-slate-50/50 dark:bg-slate-950/40 space-y-3 ${editingUser?.role === 'SUPER_ADMIN' ? 'opacity-60 grayscale-[0.5]' : ''}`}>
+                <div className="border border-slate-200 dark:border-slate-800 rounded-2xl p-4 bg-slate-50/50 dark:bg-slate-950/40 space-y-3">
                   <div className="flex items-center justify-between">
-                    <label className={`flex items-center gap-2 ${editingUser?.role === 'SUPER_ADMIN' ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                    <label className="flex items-center gap-2 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={formData.changePassword}
-                        disabled={editingUser?.role === 'SUPER_ADMIN'}
                         onChange={e => setFormData({ ...formData, changePassword: e.target.checked })}
                         className="w-4 h-4 rounded text-paila-blue focus:ring-paila-blue cursor-pointer"
                       />
@@ -821,7 +830,7 @@ export default function UsersPage() {
                       </span>
                     </label>
 
-                    {formData.changePassword && editingUser?.role !== 'SUPER_ADMIN' && (
+                    {formData.changePassword && (
                       <button
                         type="button"
                         onClick={() => {
@@ -837,7 +846,7 @@ export default function UsersPage() {
                     )}
                   </div>
 
-                  {formData.changePassword && editingUser?.role !== 'SUPER_ADMIN' && (
+                  {formData.changePassword && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 animate-fade-in">
                       <div>
                         <div className="relative">
@@ -892,13 +901,6 @@ export default function UsersPage() {
                           <p className="text-[10px] text-rose-600 dark:text-rose-400 mt-1 font-semibold">{formErrors.confirmPassword}</p>
                         )}
                       </div>
-                    </div>
-                  )}
-                  
-                  {editingUser?.role === 'SUPER_ADMIN' && (
-                    <div className="mt-1 flex items-center gap-1.5 text-[10px] text-amber-600 dark:text-amber-400 font-bold bg-amber-50 dark:bg-amber-950/30 p-2 rounded-lg border border-amber-100 dark:border-amber-900/50">
-                      <ShieldAlert size={12} />
-                      Admin passwords must be updated directly in the database for security compliance.
                     </div>
                   )}
                 </div>

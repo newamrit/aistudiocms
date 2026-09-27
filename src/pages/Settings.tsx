@@ -103,20 +103,26 @@ export default function SettingsPage({ onNavigate }: SettingsPageProps) {
       newErrors.domain = 'Official web domain is required';
     }
 
-    // Nepal PAN is typically 9 digits
-    const cleanPan = formData.panNumber.replace(/[\s-]/g, '');
-    if (!cleanPan) {
-      newErrors.panNumber = 'PAN number is required';
-    } else if (!/^\d{9}$/.test(cleanPan)) {
-      newErrors.panNumber = 'PAN number must be 9 digits (e.g., 601234567)';
+    // Nepal PAN is typically 9 digits (validated conditionally based on tax preference selection)
+    const showPan = (formData.taxPreference || 'BOTH') === 'BOTH' || (formData.taxPreference || 'BOTH') === 'PAN';
+    if (showPan) {
+      const cleanPan = formData.panNumber.replace(/[\s-]/g, '');
+      if (!cleanPan) {
+        newErrors.panNumber = 'PAN number is required';
+      } else if (!/^\d{9}$/.test(cleanPan)) {
+        newErrors.panNumber = 'PAN number must be 9 digits (e.g., 601234567)';
+      }
     }
 
-    // Nepal VAT number is often same 9-digit PAN or VAT registration number
-    const cleanVat = formData.vatNumber.replace(/[\s-]/g, '');
-    if (!cleanVat) {
-      newErrors.vatNumber = 'VAT registration number is required';
-    } else if (!/^\d{9}$/.test(cleanVat)) {
-      newErrors.vatNumber = 'VAT number should be 9 digits (e.g., 301234567)';
+    // Nepal VAT number is often same 9-digit PAN or VAT registration number (validated conditionally)
+    const showVat = (formData.taxPreference || 'BOTH') === 'BOTH' || (formData.taxPreference || 'BOTH') === 'VAT';
+    if (showVat) {
+      const cleanVat = formData.vatNumber.replace(/[\s-]/g, '');
+      if (!cleanVat) {
+        newErrors.vatNumber = 'VAT registration number is required';
+      } else if (!/^\d{9}$/.test(cleanVat)) {
+        newErrors.vatNumber = 'VAT number should be 9 digits (e.g., 301234567)';
+      }
     }
 
     if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
@@ -582,6 +588,64 @@ export default function SettingsPage({ onNavigate }: SettingsPageProps) {
               </div>
 
               <div className="space-y-4">
+                {/* Company Logo Upload */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                    Company Logo
+                  </label>
+                  <div className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
+                    {formData.logoUrl ? (
+                      <div className="relative group shrink-0">
+                        <img 
+                          src={formData.logoUrl} 
+                          alt="Company Logo Preview" 
+                          className="w-16 h-16 object-contain rounded-lg bg-white border border-slate-100 p-1 shadow-xs"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setFormData({ ...formData, logoUrl: '' })}
+                          className="absolute -top-1.5 -right-1.5 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 shadow-sm cursor-pointer"
+                        >
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="w-16 h-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg flex items-center justify-center text-slate-400 font-extrabold text-sm shadow-inner shrink-0 uppercase">
+                        {initials}
+                      </div>
+                    )}
+                    <div className="flex-1">
+                      <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Upload Custom logo</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Supports PNG, JPG, SVG. Recommended square ratio.</p>
+                      <label className="mt-2 inline-flex items-center gap-1 px-3 py-1.5 bg-paila-blue text-white rounded-lg text-[10px] font-bold shadow-xs hover:bg-paila-blue-light transition-all cursor-pointer">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                        </svg>
+                        Choose Image
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = (event) => {
+                                if (event.target?.result) {
+                                  setFormData({ ...formData, logoUrl: event.target.result as string });
+                                }
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                          className="hidden" 
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Company Name */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
@@ -675,58 +739,92 @@ export default function SettingsPage({ onNavigate }: SettingsPageProps) {
                 </div>
               </div>
 
+              {/* Tax Preference Selection Pills */}
+              <div className="mb-6 bg-slate-50/50 dark:bg-slate-950/20 p-4 rounded-xl border border-slate-100 dark:border-slate-800/80">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
+                  Tax Presentation Preference <span className="text-red-500">*</span>
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { value: 'BOTH', label: 'Show Both (PAN & VAT)' },
+                    { value: 'PAN', label: 'PAN Registered Only' },
+                    { value: 'VAT', label: 'VAT Registered Only' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, taxPreference: opt.value as any })}
+                      className={`py-2 px-3 text-xs font-bold rounded-xl border transition-all text-center cursor-pointer ${
+                        (formData.taxPreference || 'BOTH') === opt.value
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                          : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-2">
+                  Controls which tax identifiers are printed on customer invoices, vouchers, and generated PDF reports.
+                </p>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* PAN Number */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-                    PAN Number (9 Digits) <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      maxLength={12}
-                      value={formData.panNumber}
-                      onChange={e => setFormData({ ...formData, panNumber: e.target.value })}
-                      placeholder="e.g. 601234567"
-                      className={`w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800/80 border font-mono ${
-                        errors.panNumber ? 'border-red-500 ring-1 ring-red-500' : 'border-slate-200 dark:border-slate-700'
-                      } rounded-xl text-sm font-semibold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-paila-blue transition-all`}
-                    />
+                {((formData.taxPreference || 'BOTH') === 'BOTH' || (formData.taxPreference || 'BOTH') === 'PAN') && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                      PAN Number (9 Digits) <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        maxLength={12}
+                        value={formData.panNumber}
+                        onChange={e => setFormData({ ...formData, panNumber: e.target.value })}
+                        placeholder="e.g. 601234567"
+                        className={`w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800/80 border font-mono ${
+                          errors.panNumber ? 'border-red-500 ring-1 ring-red-500' : 'border-slate-200 dark:border-slate-700'
+                        } rounded-xl text-sm font-semibold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-paila-blue transition-all`}
+                      />
+                    </div>
+                    {errors.panNumber ? (
+                      <p className="text-[11px] text-red-500 mt-1 flex items-center gap-1">
+                        <AlertCircle size={12} /> {errors.panNumber}
+                      </p>
+                    ) : (
+                      <p className="text-[11px] text-slate-400 mt-1">Permanent Account Number</p>
+                    )}
                   </div>
-                  {errors.panNumber ? (
-                    <p className="text-[11px] text-red-500 mt-1 flex items-center gap-1">
-                      <AlertCircle size={12} /> {errors.panNumber}
-                    </p>
-                  ) : (
-                    <p className="text-[11px] text-slate-400 mt-1">Permanent Account Number</p>
-                  )}
-                </div>
+                )}
 
                 {/* VAT Number */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-                    VAT Number <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      maxLength={12}
-                      value={formData.vatNumber}
-                      onChange={e => setFormData({ ...formData, vatNumber: e.target.value })}
-                      placeholder="e.g. 301234567"
-                      className={`w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800/80 border font-mono ${
-                        errors.vatNumber ? 'border-red-500 ring-1 ring-red-500' : 'border-slate-200 dark:border-slate-700'
-                      } rounded-xl text-sm font-semibold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-paila-blue transition-all`}
-                    />
+                {((formData.taxPreference || 'BOTH') === 'BOTH' || (formData.taxPreference || 'BOTH') === 'VAT') && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                      VAT Number <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        maxLength={12}
+                        value={formData.vatNumber}
+                        onChange={e => setFormData({ ...formData, vatNumber: e.target.value })}
+                        placeholder="e.g. 301234567"
+                        className={`w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800/80 border font-mono ${
+                          errors.vatNumber ? 'border-red-500 ring-1 ring-red-500' : 'border-slate-200 dark:border-slate-700'
+                        } rounded-xl text-sm font-semibold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-paila-blue transition-all`}
+                      />
+                    </div>
+                    {errors.vatNumber ? (
+                      <p className="text-[11px] text-red-500 mt-1 flex items-center gap-1">
+                        <AlertCircle size={12} /> {errors.vatNumber}
+                      </p>
+                    ) : (
+                      <p className="text-[11px] text-slate-400 mt-1">Value Added Tax Registration</p>
+                    )}
                   </div>
-                  {errors.vatNumber ? (
-                    <p className="text-[11px] text-red-500 mt-1 flex items-center gap-1">
-                      <AlertCircle size={12} /> {errors.vatNumber}
-                    </p>
-                  ) : (
-                    <p className="text-[11px] text-slate-400 mt-1">Value Added Tax Registration</p>
-                  )}
-                </div>
+                )}
               </div>
             </div>
 
@@ -924,8 +1022,10 @@ export default function SettingsPage({ onNavigate }: SettingsPageProps) {
                         <p className="truncate max-w-[140px]">{formData.address || 'Address'}</p>
                         <p>Phone: {formData.phone}</p>
                         <p>Web: {formData.domain}</p>
-                        <p className="font-mono font-bold text-slate-900">
-                          PAN: {formData.panNumber} | VAT: {formData.vatNumber}
+                        <p className="font-mono font-bold text-slate-900 text-[9px]">
+                          {((formData.taxPreference || 'BOTH') === 'BOTH' || (formData.taxPreference || 'BOTH') === 'PAN') && `PAN: ${formData.panNumber}`}
+                          {(formData.taxPreference || 'BOTH') === 'BOTH' && ' | '}
+                          {((formData.taxPreference || 'BOTH') === 'BOTH' || (formData.taxPreference || 'BOTH') === 'VAT') && `VAT: ${formData.vatNumber}`}
                         </p>
                       </div>
                     </div>
@@ -951,8 +1051,8 @@ export default function SettingsPage({ onNavigate }: SettingsPageProps) {
                     <p className="text-slate-600 text-[11px]">Phone: {formData.phone}</p>
                     <p className="text-slate-600 text-[11px]">Email: {formData.email || `info@${formData.domain}`} • {formData.domain}</p>
                     <div className="mt-2 pt-1.5 border-t border-slate-200 flex justify-between font-mono text-[10px] text-slate-800 font-semibold">
-                      <span>PAN: {formData.panNumber}</span>
-                      <span>VAT: {formData.vatNumber}</span>
+                      {((formData.taxPreference || 'BOTH') === 'BOTH' || (formData.taxPreference || 'BOTH') === 'PAN') && <span>PAN: {formData.panNumber}</span>}
+                      {((formData.taxPreference || 'BOTH') === 'BOTH' || (formData.taxPreference || 'BOTH') === 'VAT') && <span>VAT: {formData.vatNumber}</span>}
                     </div>
                   </div>
 
@@ -976,7 +1076,11 @@ export default function SettingsPage({ onNavigate }: SettingsPageProps) {
                   <div className="border-t border-slate-200 pt-2 text-[9px] text-slate-500 text-center space-y-0.5">
                     <p className="font-semibold text-paila-blue">{formData.companyName}</p>
                     <p>{formData.address} • {formData.phone} • {formData.domain}</p>
-                    <p className="text-slate-400">PAN: {formData.panNumber} | VAT: {formData.vatNumber}</p>
+                    <p className="text-slate-400">
+                      {((formData.taxPreference || 'BOTH') === 'BOTH' || (formData.taxPreference || 'BOTH') === 'PAN') && `PAN: ${formData.panNumber}`}
+                      {(formData.taxPreference || 'BOTH') === 'BOTH' && ' | '}
+                      {((formData.taxPreference || 'BOTH') === 'BOTH' || (formData.taxPreference || 'BOTH') === 'VAT') && `VAT: ${formData.vatNumber}`}
+                    </p>
                   </div>
                 </div>
               )}

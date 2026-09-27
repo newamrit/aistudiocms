@@ -9,6 +9,7 @@ export const defaultCompanySettings: CompanySettings = {
   domain: 'pailanepal.com',
   panNumber: '601234567',
   vatNumber: '301234567',
+  taxPreference: 'BOTH',
   email: 'info@pailanepal.com',
   tagline: 'Trekking • Mountaineering • Institutional Excursions',
   emergencyPhone: '+977-9801234567',

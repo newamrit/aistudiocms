@@ -10,7 +10,7 @@ class ApiClient {
 
   constructor() {
     // Load token from localStorage
-    this.token = localStorage.getItem('auth_token');
+    this.token = localStorage.getItem('auth_token') || localStorage.getItem('paila_auth_token');
   }
 
   /**
